@@ -1,0 +1,27 @@
+# Gradle / build output
+.gradle/
+build/
+**/build/
+.cxx/
+.externalNativeBuild/
+captures/
+
+# Local config and secrets (never commit)
+local.properties
+*.jks
+*.keystore
+keystore.properties
+secrets.properties
+.env
+
+# Models (downloaded in-app, never committed)
+*.gguf
+
+# IDE
+.idea/
+*.iml
+.vscode/
+
+# OS
+.DS_Store
+Thumbs.db
