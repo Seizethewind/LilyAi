@@ -47,7 +47,7 @@ class ApiRegistry(
                     id = o.getString("id"),
                     name = o.getString("name"),
                     type = o.getString("type"),
-                    baseUrl = o.getString("baseUrl"),
+                    baseUrl = o.optString("baseUrl", ""),
                     defaultModel = o.optString("defaultModel", ""),
                     keyRequired = o.optBoolean("keyRequired", true),
                     permissionLevel = o.optString("permissionLevel", "safe")

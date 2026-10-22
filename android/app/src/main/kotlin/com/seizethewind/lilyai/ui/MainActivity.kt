@@ -17,6 +17,8 @@ import androidx.lifecycle.viewmodel.initializer
 import androidx.lifecycle.viewmodel.viewModelFactory
 import com.seizethewind.lilyai.LilyAiApplication
 
+private enum class Screen { CHAT, SETTINGS, MEMORY, CLOUD }
+
 class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -24,26 +26,48 @@ class MainActivity : ComponentActivity() {
         setContent {
             MaterialTheme {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    var showSettings by remember { mutableStateOf(false) }
-                    if (showSettings) {
-                        BackHandler { showSettings = false }
-                        SettingsScreen(
-                            settings = app.settings,
-                            keyStore = app.keyStore,
-                            modelManager = app.modelManager,
-                            localEngine = app.localEngine,
-                            onBack = { showSettings = false }
-                        )
-                    } else {
-                        val chatViewModel: ChatViewModel = viewModel(
-                            factory = viewModelFactory {
-                                initializer { ChatViewModel(app.agent) }
-                            }
-                        )
-                        ChatScreen(
-                            viewModel = chatViewModel,
-                            onOpenSettings = { showSettings = true }
-                        )
+                    var screen by remember { mutableStateOf(Screen.CHAT) }
+                    when (screen) {
+                        Screen.CHAT -> {
+                            val chatViewModel: ChatViewModel = viewModel(
+                                factory = viewModelFactory {
+                                    initializer { ChatViewModel(app.agent) }
+                                }
+                            )
+                            ChatScreen(
+                                viewModel = chatViewModel,
+                                onOpenMemories = { screen = Screen.MEMORY },
+                                onOpenSettings = { screen = Screen.SETTINGS }
+                            )
+                        }
+                        Screen.SETTINGS -> {
+                            BackHandler { screen = Screen.CHAT }
+                            SettingsScreen(
+                                settings = app.settings,
+                                keyStore = app.keyStore,
+                                modelManager = app.modelManager,
+                                localEngine = app.localEngine,
+                                onBack = { screen = Screen.CHAT }
+                            )
+                        }
+                        Screen.MEMORY -> {
+                            BackHandler { screen = Screen.CHAT }
+                            MemoryScreen(
+                                memoryManager = app.memoryManager,
+                                settings = app.settings,
+                                onOpenCloud = { screen = Screen.CLOUD },
+                                onBack = { screen = Screen.CHAT }
+                            )
+                        }
+                        Screen.CLOUD -> {
+                            BackHandler { screen = Screen.MEMORY }
+                            CloudScreen(
+                                keyStore = app.keyStore,
+                                cloudSync = app.cloudSync,
+                                settings = app.settings,
+                                onBack = { screen = Screen.MEMORY }
+                            )
+                        }
                     }
                 }
             }

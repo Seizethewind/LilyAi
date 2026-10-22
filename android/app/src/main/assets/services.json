@@ -8,6 +8,20 @@
       "defaultModel": "llama-3.3-70b-versatile",
       "keyRequired": true,
       "permissionLevel": "safe"
+    },
+    {
+      "id": "turso-memory",
+      "name": "Turso memory",
+      "type": "database",
+      "keyRequired": true,
+      "permissionLevel": "sensitive"
+    },
+    {
+      "id": "turso-backup",
+      "name": "Turso backup",
+      "type": "database",
+      "keyRequired": true,
+      "permissionLevel": "sensitive"
     }
   ]
 }

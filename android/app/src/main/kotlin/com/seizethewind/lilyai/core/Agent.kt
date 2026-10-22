@@ -4,6 +4,7 @@ import com.seizethewind.lilyai.api.ApiKeyStore
 import com.seizethewind.lilyai.api.ApiRegistry
 import com.seizethewind.lilyai.api.ChatMessage
 import com.seizethewind.lilyai.inference.LlamaEngine
+import com.seizethewind.lilyai.memory.MemoryManager
 import com.seizethewind.lilyai.prompt.PromptProcessor
 import com.seizethewind.lilyai.settings.EngineMode
 import com.seizethewind.lilyai.settings.SettingsManager
@@ -18,33 +19,49 @@ interface ResponseListener {
 }
 
 /**
- * The assistant's brain. For now it chats and picks the engine; tools, planning and
- * smarter routing are added in later phases.
+ * The assistant's brain. For now it chats, remembers things on request and picks the engine;
+ * tools, planning and smarter routing are added in later phases.
  */
 class Agent(
     private val registry: ApiRegistry,
     private val settings: SettingsManager,
     private val localEngine: LlamaEngine,
     private val keyStore: ApiKeyStore,
+    private val memory: MemoryManager,
     private val prompts: PromptProcessor = PromptProcessor()
 ) {
 
     suspend fun respond(history: List<ChatMessage>, listener: ResponseListener): Result<String> {
-        val messages = prompts.build(history)
+        val lastUser = history.lastOrNull { it.role == "user" }?.content.orEmpty()
+
+        // "remember ..." is handled directly and never sent to any model.
+        memory.tryHandleCommand(lastUser)?.let { reply ->
+            listener.onEngineChosen(MEMORY_NAME)
+            return Result.success(reply)
+        }
+
+        // Memories always go to the local model. They go to Groq only if the user allowed it.
+        val memoryLines = memory.contextLines(lastUser)
+        val localMessages = prompts.build(history, memoryLines)
+        val cloudMessages = prompts.build(
+            history,
+            if (settings.shareMemoryWithCloud) memoryLines else emptyList()
+        )
+
         return when (settings.engineMode) {
-            EngineMode.LOCAL -> runLocal(messages, listener)
-            EngineMode.CLOUD -> runCloud(messages, listener)
+            EngineMode.LOCAL -> runLocal(localMessages, listener)
+            EngineMode.CLOUD -> runCloud(cloudMessages, listener)
             EngineMode.AUTO -> {
                 if (localEngine.isReady()) {
-                    val local = runLocal(messages, listener)
+                    val local = runLocal(localMessages, listener)
                     val failure = local.exceptionOrNull()
                     if (failure == null || failure is StoppedException || !keyStore.has(GROQ)) {
                         local
                     } else {
-                        runCloud(messages, listener)
+                        runCloud(cloudMessages, listener)
                     }
                 } else {
-                    runCloud(messages, listener)
+                    runCloud(cloudMessages, listener)
                 }
             }
         }
@@ -68,6 +85,7 @@ class Agent(
     companion object {
         const val LOCAL_NAME = "Local"
         const val CLOUD_NAME = "Groq"
+        const val MEMORY_NAME = "Memory"
         private const val GROQ = "groq"
     }
 }
