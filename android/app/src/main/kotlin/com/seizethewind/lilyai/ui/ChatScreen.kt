@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.rememberLazyListState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material3.Button
 import androidx.compose.material3.MaterialTheme
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
@@ -35,10 +36,11 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val thinking = viewModel.state == AgentState.THINKING
+    val lastText = viewModel.messages.lastOrNull()?.text
 
-    LaunchedEffect(viewModel.messages.size) {
+    LaunchedEffect(viewModel.messages.size, lastText) {
         if (viewModel.messages.isNotEmpty()) {
-            listState.animateScrollToItem(viewModel.messages.lastIndex)
+            listState.scrollToItem(viewModel.messages.lastIndex)
         }
     }
 
@@ -58,7 +60,7 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(viewModel.messages) { MessageBubble(it) }
-            if (thinking) {
+            if (thinking && viewModel.messages.lastOrNull()?.role != "assistant") {
                 item { Text("Thinking...", style = MaterialTheme.typography.bodySmall) }
             }
         }
@@ -75,13 +77,17 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
                 maxLines = 4
             )
             Spacer(modifier = Modifier.width(8.dp))
-            Button(
-                onClick = {
-                    viewModel.send(input)
-                    input = ""
-                },
-                enabled = input.isNotBlank() && !thinking
-            ) { Text("Send") }
+            if (thinking) {
+                OutlinedButton(onClick = { viewModel.stop() }) { Text("Stop") }
+            } else {
+                Button(
+                    onClick = {
+                        viewModel.send(input)
+                        input = ""
+                    },
+                    enabled = input.isNotBlank()
+                ) { Text("Send") }
+            }
         }
     }
 }
@@ -103,7 +109,12 @@ private fun MessageBubble(message: UiMessage) {
             shape = RoundedCornerShape(12.dp),
             modifier = Modifier.widthIn(max = 320.dp)
         ) {
-            Text(text = message.text, modifier = Modifier.padding(10.dp))
+            Column(modifier = Modifier.padding(10.dp)) {
+                Text(text = message.text)
+                if (message.engine != null) {
+                    Text(text = message.engine, style = MaterialTheme.typography.labelSmall)
+                }
+            }
         }
     }
 }

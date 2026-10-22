@@ -30,6 +30,8 @@ class MainActivity : ComponentActivity() {
                         SettingsScreen(
                             settings = app.settings,
                             keyStore = app.keyStore,
+                            modelManager = app.modelManager,
+                            localEngine = app.localEngine,
                             onBack = { showSettings = false }
                         )
                     } else {
