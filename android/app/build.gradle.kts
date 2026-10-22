@@ -10,6 +10,7 @@ val releaseKeystorePath: String? = System.getenv("KEYSTORE_PATH")
 android {
     namespace = "com.seizethewind.lilyai"
     compileSdk = 34
+    ndkVersion = "26.1.10909125"
 
     defaultConfig {
         applicationId = "com.seizethewind.lilyai"
@@ -18,6 +19,23 @@ android {
         // versionCode must go up with every release or Android refuses the update.
         versionCode = (System.getenv("VERSION_CODE") ?: "1").toInt()
         versionName = System.getenv("VERSION_NAME") ?: "0.1.0"
+
+        // The local model needs a 64-bit ARM phone.
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
+        externalNativeBuild {
+            cmake {
+                arguments += listOf("-DANDROID_STL=c++_static", "-DCMAKE_BUILD_TYPE=Release")
+            }
+        }
+    }
+
+    externalNativeBuild {
+        cmake {
+            path = file("src/main/cpp/CMakeLists.txt")
+            version = "3.22.1"
+        }
     }
 
     signingConfigs {
