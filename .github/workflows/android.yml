@@ -24,7 +24,8 @@ jobs:
 
       # Pin the exact native toolchain the app build expects.
       - name: Install NDK and CMake
-        run: "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "cmake;3.22.1" "ndk;26.1.10909125"
+        run: |
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "cmake;3.22.1" "ndk;26.1.10909125"
 
       - uses: gradle/actions/setup-gradle@v4
         with:
