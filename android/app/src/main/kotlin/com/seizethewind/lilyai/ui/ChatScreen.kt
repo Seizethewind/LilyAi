@@ -65,8 +65,8 @@ fun ChatScreen(
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(viewModel.messages) { MessageBubble(it) }
-            if (thinking && viewModel.messages.lastOrNull()?.role != "assistant") {
-                item { Text("Thinking...", style = MaterialTheme.typography.bodySmall) }
+            if (thinking && (viewModel.messages.lastOrNull()?.role != "assistant" || viewModel.status != "Thinking...")) {
+                item { Text(viewModel.status, style = MaterialTheme.typography.bodySmall) }
             }
         }
 

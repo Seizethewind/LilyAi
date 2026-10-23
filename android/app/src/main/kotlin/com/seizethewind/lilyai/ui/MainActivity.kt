@@ -5,8 +5,12 @@ import androidx.activity.ComponentActivity
 import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Surface
+import androidx.compose.material3.Text
+import androidx.compose.material3.TextButton
+import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -47,6 +51,7 @@ class MainActivity : ComponentActivity() {
                                 keyStore = app.keyStore,
                                 modelManager = app.modelManager,
                                 localEngine = app.localEngine,
+                                permissions = app.permissions,
                                 onBack = { screen = Screen.CHAT }
                             )
                         }
@@ -68,6 +73,22 @@ class MainActivity : ComponentActivity() {
                                 onBack = { screen = Screen.MEMORY }
                             )
                         }
+                    }
+
+                    // Approval dialog for actions that need the user's OK. Shown on top of any screen.
+                    val pending by app.confirmations.pending.collectAsState()
+                    pending?.let { request ->
+                        AlertDialog(
+                            onDismissRequest = { app.confirmations.answer(false) },
+                            title = { Text("LilyAi needs your OK") },
+                            text = { Text(request.message) },
+                            confirmButton = {
+                                TextButton(onClick = { app.confirmations.answer(true) }) { Text("Allow") }
+                            },
+                            dismissButton = {
+                                TextButton(onClick = { app.confirmations.answer(false) }) { Text("Deny") }
+                            }
+                        )
                     }
                 }
             }

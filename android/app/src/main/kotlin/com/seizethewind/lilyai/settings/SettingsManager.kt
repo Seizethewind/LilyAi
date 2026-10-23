@@ -34,6 +34,20 @@ class SettingsManager(context: Context) {
             prefs.edit().putBoolean(KEY_SHARE_MEMORY, value).apply()
         }
 
+    /** Lets the model use tools (time, memories). Anything that changes something still asks first. */
+    var toolsEnabled: Boolean
+        get() = prefs.getBoolean(KEY_TOOLS, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_TOOLS, value).apply()
+        }
+
+    /** Show the floating Stop button over other apps while LilyAi works (needs the overlay permission). */
+    var showStopOverlay: Boolean
+        get() = prefs.getBoolean(KEY_OVERLAY, true)
+        set(value) {
+            prefs.edit().putBoolean(KEY_OVERLAY, value).apply()
+        }
+
     /** Newest memory timestamp already received from the cloud. */
     var lastPull: Long
         get() = prefs.getLong(KEY_LAST_PULL, 0L)
@@ -53,6 +67,8 @@ class SettingsManager(context: Context) {
         private const val KEY_GROQ_MODEL = "groq_model"
         private const val KEY_ENGINE_MODE = "engine_mode"
         private const val KEY_SHARE_MEMORY = "share_memory_cloud"
+        private const val KEY_TOOLS = "tools_enabled"
+        private const val KEY_OVERLAY = "show_stop_overlay"
         private const val KEY_LAST_PULL = "last_pull"
         private const val KEY_LAST_BACKUP = "last_backup"
     }
