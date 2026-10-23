@@ -32,7 +32,11 @@ import androidx.compose.ui.unit.dp
 import com.seizethewind.lilyai.core.AgentState
 
 @Composable
-fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
+fun ChatScreen(
+    viewModel: ChatViewModel,
+    onOpenMemories: () -> Unit,
+    onOpenSettings: () -> Unit
+) {
     var input by remember { mutableStateOf("") }
     val listState = rememberLazyListState()
     val thinking = viewModel.state == AgentState.THINKING
@@ -51,6 +55,7 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
                 style = MaterialTheme.typography.titleLarge,
                 modifier = Modifier.weight(1f)
             )
+            TextButton(onClick = onOpenMemories) { Text("Memories") }
             TextButton(onClick = onOpenSettings) { Text("Settings") }
         }
 
@@ -60,8 +65,8 @@ fun ChatScreen(viewModel: ChatViewModel, onOpenSettings: () -> Unit) {
             verticalArrangement = Arrangement.spacedBy(8.dp)
         ) {
             items(viewModel.messages) { MessageBubble(it) }
-            if (thinking && viewModel.messages.lastOrNull()?.role != "assistant") {
-                item { Text("Thinking...", style = MaterialTheme.typography.bodySmall) }
+            if (thinking && (viewModel.messages.lastOrNull()?.role != "assistant" || viewModel.status != "Thinking...")) {
+                item { Text(viewModel.status, style = MaterialTheme.typography.bodySmall) }
             }
         }
 

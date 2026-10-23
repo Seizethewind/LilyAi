@@ -1,5 +1,9 @@
 package com.seizethewind.lilyai.ui
 
+import android.Manifest
+import android.os.Build
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Column
@@ -16,6 +20,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.RadioButton
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -28,14 +33,19 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.platform.LocalView
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.input.PasswordVisualTransformation
 import androidx.compose.ui.unit.dp
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import com.seizethewind.lilyai.api.ApiKeyStore
 import com.seizethewind.lilyai.inference.LlamaEngine
 import com.seizethewind.lilyai.model.ModelDownloadManager
 import com.seizethewind.lilyai.model.ModelState
+import com.seizethewind.lilyai.permissions.PermissionManager
 import com.seizethewind.lilyai.settings.EngineMode
 import com.seizethewind.lilyai.settings.SettingsManager
 import kotlinx.coroutines.launch
@@ -48,6 +58,7 @@ fun SettingsScreen(
     keyStore: ApiKeyStore,
     modelManager: ModelDownloadManager,
     localEngine: LlamaEngine,
+    permissions: PermissionManager,
     onBack: () -> Unit
 ) {
     var keyInput by remember { mutableStateOf("") }
@@ -55,11 +66,30 @@ fun SettingsScreen(
     var saveError by remember { mutableStateOf(false) }
     var model by remember { mutableStateOf(settings.groqModel) }
     var mode by remember { mutableStateOf(settings.engineMode) }
+    var toolsEnabled by remember { mutableStateOf(settings.toolsEnabled) }
+    var showOverlay by remember { mutableStateOf(settings.showStopOverlay) }
 
     val modelState by modelManager.state.collectAsState()
     val scope = rememberCoroutineScope()
     val view = LocalView.current
+    val context = LocalContext.current
     val downloading = modelState is ModelState.Downloading
+
+    // Re-check permissions whenever the user comes back from Android's settings.
+    var permissionTick by remember { mutableStateOf(0) }
+    val lifecycleOwner = LocalLifecycleOwner.current
+    DisposableEffect(lifecycleOwner) {
+        val observer = LifecycleEventObserver { _, event ->
+            if (event == Lifecycle.Event.ON_RESUME) permissionTick++
+        }
+        lifecycleOwner.lifecycle.addObserver(observer)
+        onDispose { lifecycleOwner.lifecycle.removeObserver(observer) }
+    }
+    val overlayGranted = remember(permissionTick) { permissions.canDrawOverlays() }
+    val notificationsGranted = remember(permissionTick) { permissions.notificationsGranted() }
+    val notificationLauncher = rememberLauncherForActivityResult(
+        ActivityResultContracts.RequestPermission()
+    ) { permissionTick++ }
 
     // Keep the screen on while the model downloads so Android doesn't pause the network.
     DisposableEffect(downloading) {
@@ -115,6 +145,38 @@ fun SettingsScreen(
         EngineOption(mode == EngineMode.CLOUD, "Groq only") {
             mode = EngineMode.CLOUD
             settings.engineMode = EngineMode.CLOUD
+        }
+
+        Text("Tools and safety", style = MaterialTheme.typography.titleMedium)
+        SwitchRow("Allow tools (time, memories)", toolsEnabled) {
+            toolsEnabled = it
+            settings.toolsEnabled = it
+        }
+        Text(
+            text = "Anything that changes something, like saving a memory, always asks you first. The Stop button cancels everything at once.",
+            style = MaterialTheme.typography.bodySmall
+        )
+        SwitchRow("Floating Stop button while LilyAi works", showOverlay) {
+            showOverlay = it
+            settings.showStopOverlay = it
+        }
+        Text(
+            text = if (overlayGranted) "Display over other apps: allowed." else "Display over other apps: not allowed yet.",
+            style = MaterialTheme.typography.bodySmall
+        )
+        if (!overlayGranted) {
+            OutlinedButton(onClick = { context.startActivity(permissions.overlayPermissionIntent()) }) {
+                Text("Allow display over other apps")
+            }
+        }
+        Text(
+            text = if (notificationsGranted) "Notifications: allowed." else "Notifications: not allowed yet.",
+            style = MaterialTheme.typography.bodySmall
+        )
+        if (!notificationsGranted && Build.VERSION.SDK_INT >= 33) {
+            OutlinedButton(
+                onClick = { notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS) }
+            ) { Text("Allow notifications") }
         }
 
         Text("Groq API key", style = MaterialTheme.typography.titleMedium)
@@ -230,6 +292,17 @@ private fun EngineOption(selected: Boolean, label: String, onSelect: () -> Unit)
     ) {
         RadioButton(selected = selected, onClick = onSelect)
         Text(label)
+    }
+}
+
+@Composable
+private fun SwitchRow(label: String, checked: Boolean, onChange: (Boolean) -> Unit) {
+    Row(
+        modifier = Modifier.fillMaxWidth(),
+        verticalAlignment = Alignment.CenterVertically
+    ) {
+        Text(label, modifier = Modifier.weight(1f))
+        Switch(checked = checked, onCheckedChange = onChange)
     }
 }
 

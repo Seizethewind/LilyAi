@@ -24,10 +24,27 @@ class ChatViewModel(private val agent: Agent) : ViewModel() {
     var state by mutableStateOf(AgentState.IDLE)
         private set
 
+    var status by mutableStateOf(DEFAULT_STATUS)
+        private set
+
     private var job: Job? = null
 
     @Volatile
     private var localActive = false
+
+    // Lets the notification or floating Stop button also end a cloud request.
+    private val stopListener: () -> Unit = {
+        if (!localActive) job?.cancel()
+    }
+
+    init {
+        agent.addStopListener(stopListener)
+    }
+
+    override fun onCleared() {
+        agent.removeStopListener(stopListener)
+        super.onCleared()
+    }
 
     fun send(text: String) {
         val trimmed = text.trim()
@@ -38,6 +55,7 @@ class ChatViewModel(private val agent: Agent) : ViewModel() {
             .map { ChatMessage(it.role, it.text) }
         messages = messages + userMessage
         state = AgentState.THINKING
+        status = DEFAULT_STATUS
         localActive = false
 
         job = viewModelScope.launch {
@@ -64,6 +82,10 @@ class ChatViewModel(private val agent: Agent) : ViewModel() {
                     sb.append(text)
                     publish(UiMessage("assistant", sb.toString(), engine))
                 }
+
+                override fun onStatus(text: String) {
+                    status = text
+                }
             }
 
             try {
@@ -78,13 +100,17 @@ class ChatViewModel(private val agent: Agent) : ViewModel() {
                 )
             } finally {
                 state = AgentState.IDLE
+                status = DEFAULT_STATUS
             }
         }
     }
 
-    /** Stops the local model right away; a cloud request is simply abandoned. */
+    /** The Stop button: ends the request, cancels pending approvals and blocks further actions. */
     fun stop() {
         agent.stop()
-        if (!localActive) job?.cancel()
+    }
+
+    companion object {
+        private const val DEFAULT_STATUS = "Thinking..."
     }
 }

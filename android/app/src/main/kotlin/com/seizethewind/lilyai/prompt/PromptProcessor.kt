@@ -2,12 +2,24 @@ package com.seizethewind.lilyai.prompt
 
 import com.seizethewind.lilyai.api.ChatMessage
 
-/** Turns the visible conversation into the messages sent to a model. */
+/** Turns the visible conversation, memories and tool instructions into the messages sent to a model. */
 class PromptProcessor {
 
-    fun build(history: List<ChatMessage>): List<ChatMessage> {
+    fun build(
+        history: List<ChatMessage>,
+        memories: List<String> = emptyList(),
+        toolsSection: String? = null
+    ): List<ChatMessage> {
         val recent = history.takeLast(MAX_HISTORY)
-        return listOf(ChatMessage("system", SYSTEM_PROMPT)) + recent
+        val system = StringBuilder(SYSTEM_PROMPT)
+        if (memories.isNotEmpty()) {
+            system.append("\n\nThings the user asked you to remember (use them only when relevant):\n")
+            system.append(memories.joinToString("\n") { "- $it" })
+        }
+        if (toolsSection != null) {
+            system.append("\n\n").append(toolsSection)
+        }
+        return listOf(ChatMessage("system", system.toString())) + recent
     }
 
     companion object {
