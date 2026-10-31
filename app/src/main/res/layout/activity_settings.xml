@@ -1,0 +1,36 @@
+<?xml version="1.0" encoding="utf-8"?>
+<ScrollView xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="match_parent">
+
+    <LinearLayout
+        android:layout_width="match_parent"
+        android:layout_height="wrap_content"
+        android:orientation="vertical"
+        android:padding="16dp">
+
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Router" android:textSize="18sp" />
+        <EditText android:id="@+id/router_url" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Router URL (ends with /v1)" android:inputType="textUri" />
+        <EditText android:id="@+id/router_key" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Router unified key" android:inputType="textPassword" />
+
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Turso: Journal" android:textSize="18sp" />
+        <EditText android:id="@+id/journal_url" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Journal DB URL (libsql://...)" android:inputType="textUri" />
+        <EditText android:id="@+id/journal_token" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Journal DB token" android:inputType="textPassword" />
+
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Turso: Proven facts" android:textSize="18sp" />
+        <EditText android:id="@+id/facts_url" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Facts DB URL (libsql://...)" android:inputType="textUri" />
+        <EditText android:id="@+id/facts_token" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Facts DB token" android:inputType="textPassword" />
+
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Pandastack" android:textSize="18sp" />
+        <EditText android:id="@+id/panda_url" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="API URL (default api.pandastack.ai)" android:inputType="textUri" />
+        <EditText android:id="@+id/panda_key" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Pandastack API key" android:inputType="textPassword" />
+
+        <Button
+            android:id="@+id/save"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:layout_marginTop="24dp"
+            android:text="Save" />
+
+    </LinearLayout>
+</ScrollView>

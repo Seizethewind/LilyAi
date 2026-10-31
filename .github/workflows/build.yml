@@ -15,4 +15,6 @@ jobs:
           distribution: temurin
           java-version: 17
       - uses: gradle/actions/setup-gradle@v4
-      - run: ./gradlew assembleDebug testDebugUnitTest
+        with:
+          gradle-version: 8.10.2
+      - run: gradle assembleDebug testDebugUnitTest
