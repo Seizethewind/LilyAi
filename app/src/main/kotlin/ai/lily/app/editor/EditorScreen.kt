@@ -1,5 +1,6 @@
 package ai.lily.app.editor
 
+import ai.lily.app.lib.editor.Lang
 import ai.lily.app.lib.editor.TokenKind
 import ai.lily.app.lib.editor.highlight
 import ai.lily.app.lib.editor.lineColumn
@@ -74,7 +75,7 @@ private fun colorFor(kind: TokenKind): Color = when (kind) {
     TokenKind.HEADING -> Color(0xFFFFB86C)
 }
 
-private class HighlightTransformation(private val lang: ai.lily.app.lib.editor.Lang) : VisualTransformation {
+private class HighlightTransformation(private val lang: Lang) : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         val s = text.text
         val b = AnnotatedString.Builder(s)
@@ -166,9 +167,9 @@ fun EditorScreen(state: EditorState) {
         }
 
         if (tab != null) {
-            val (line, col) = lineColumn(tab.value.text, tab.value.selection.start)
+            val pos = lineColumn(tab.value.text, tab.value.selection.start)
             Text(
-                "${tab.lang.label}    Ln $line, Col $col",
+                "${tab.lang.label}    Ln ${pos.first}, Col ${pos.second}",
                 color = Muted,
                 fontSize = 12.sp,
                 modifier = Modifier.fillMaxWidth().background(Panel).padding(horizontal = 12.dp, vertical = 4.dp),
@@ -235,21 +236,21 @@ fun EditorScreen(state: EditorState) {
     }
 
     if (showGoto) {
-        var line by remember { mutableStateOf("") }
+        var lineText by remember { mutableStateOf("") }
         AlertDialog(
             onDismissRequest = { showGoto = false },
             confirmButton = {
                 TextButton(onClick = {
                     showGoto = false
-                    line.toIntOrNull()?.let { state.goToLine(it) }
+                    lineText.toIntOrNull()?.let { state.goToLine(it) }
                 }) { Text("Go") }
             },
             dismissButton = { TextButton(onClick = { showGoto = false }) { Text("Cancel") } },
             title = { Text("Go to line") },
             text = {
                 TextField(
-                    value = line,
-                    onValueChange = { line = it.filter(Char::isDigit) },
+                    value = lineText,
+                    onValueChange = { lineText = it.filter(Char::isDigit) },
                     singleLine = true,
                 )
             },
@@ -285,21 +286,21 @@ private fun CodeArea(tab: EditorTab, state: EditorState, modifier: Modifier) {
             style = codeStyle.copy(color = Muted, textAlign = TextAlign.End),
             modifier = Modifier.padding(horizontal = 8.dp).widthIn(min = 24.dp),
         )
+        // The field sits in a horizontal scroll area, so it gets unbounded width and lines do not wrap.
         Box(Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
             BasicTextField(
                 value = value,
                 onValueChange = { state.onEdit(tab, it) },
+                modifier = Modifier
+                    .defaultMinSize(minWidth = 320.dp, minHeight = 400.dp)
+                    .padding(end = 24.dp),
                 textStyle = codeStyle,
-                cursorBrush = SolidColor(Accent),
-                visualTransformation = transformation,
-                softWrap = false,
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.None,
                     autoCorrectEnabled = false,
                 ),
-                modifier = Modifier
-                    .defaultMinSize(minWidth = 320.dp, minHeight = 400.dp)
-                    .padding(end = 24.dp),
+                visualTransformation = transformation,
+                cursorBrush = SolidColor(Accent),
             )
         }
     }
