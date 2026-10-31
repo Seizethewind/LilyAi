@@ -1,10 +1,12 @@
 package ai.lily.app.editor
 
+import ai.lily.app.lib.editor.DraftStore
 import ai.lily.app.lib.editor.FindOptions
 import ai.lily.app.lib.editor.Lang
 import ai.lily.app.lib.editor.ProjectSearchResult
 import ai.lily.app.lib.editor.UndoHistory
 import ai.lily.app.lib.editor.buildFindRegex
+import ai.lily.app.lib.editor.canPreview
 import ai.lily.app.lib.editor.deleteLines
 import ai.lily.app.lib.editor.detectIndent
 import ai.lily.app.lib.editor.duplicateLines
@@ -27,6 +29,7 @@ import androidx.compose.ui.text.input.TextFieldValue
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.io.File
+import java.io.IOException
 
 /** Files bigger than this are not opened. */
 const val MAX_FILE_BYTES = 1_000_000L
@@ -35,7 +38,11 @@ const val MAX_FILE_BYTES = 1_000_000L
 const val MAX_HIGHLIGHT_CHARS = 150_000
 
 private const val MAX_LISTED = 3_000
+private const val AUTO_SAVE_AFTER_MS = 2_000L
 private val SKIP_DIRS = setOf(".git", "node_modules", "build", ".gradle", ".idea")
+
+/** What the preview shows: nothing, half the screen under the editor, or the whole screen. */
+enum class PreviewMode { OFF, SPLIT, FULL }
 
 /** One open file. */
 class EditorTab(val path: String, text: String) {
@@ -45,13 +52,37 @@ class EditorTab(val path: String, text: String) {
     val history = UndoHistory(text)
     val dirty: Boolean get() = value.text != savedText
     val name: String get() = path.substringAfterLast('/')
+
+    /** Counts every change to the text. The draft saver uses it to see what is new. */
+    var editVersion = 0
+    var draftedVersion = 0
+    var lastEditAt = 0L
+
+    /** Puts back typing that was never saved. It becomes the first undo step after the saved text. */
+    fun restore(text: String) {
+        val now = System.currentTimeMillis()
+        value = TextFieldValue(text)
+        history.record(text, 0, 0, now, boundary = true)
+        editVersion++
+        lastEditAt = now
+    }
 }
 
-/** Everything the editor screen shows: open tabs, the find bar and status messages. */
-class EditorState(private val root: File) {
+/** Everything the editor screen shows: open tabs, settings, the find bar and status messages. */
+class EditorState(
+    val root: File,
+    private val drafts: DraftStore,
+    private val prefs: EditorPrefs,
+) {
     val tabs = mutableStateListOf<EditorTab>()
     var active by mutableStateOf(0)
     var message by mutableStateOf<String?>(null)
+
+    var settings by mutableStateOf(prefs.loadSettings())
+        private set
+    var fontSize by mutableStateOf(prefs.fontSize)
+        private set
+    var preview by mutableStateOf(PreviewMode.OFF)
 
     var findQuery by mutableStateOf("")
     var replaceText by mutableStateOf("")
@@ -60,8 +91,36 @@ class EditorState(private val root: File) {
     var findInfo by mutableStateOf<String?>(null)
 
     private var pendingClose: EditorTab? = null
+    private var sessionReady = false
 
     val current: EditorTab? get() = tabs.getOrNull(active)
+    val theme: EditorTheme get() = editorThemeById(settings.theme)
+
+    // ---- Settings and preview ----
+
+    fun updateSettings(s: ai.lily.app.lib.editor.EditorSettings) {
+        settings = s
+        prefs.saveSettings(s)
+    }
+
+    fun updateFontSize(size: Int) {
+        fontSize = size.coerceIn(EditorPrefs.MIN_FONT, EditorPrefs.MAX_FONT)
+        prefs.fontSize = fontSize
+    }
+
+    /** Off, then half the screen, then the whole screen, then off again. */
+    fun cyclePreview() {
+        val tab = current
+        if (tab == null || !canPreview(tab.path)) {
+            message = "Preview works for HTML, SVG, Markdown and JavaScript files"
+            return
+        }
+        preview = when (preview) {
+            PreviewMode.OFF -> PreviewMode.SPLIT
+            PreviewMode.SPLIT -> PreviewMode.FULL
+            PreviewMode.FULL -> PreviewMode.OFF
+        }
+    }
 
     // ---- Files ----
 
@@ -103,11 +162,29 @@ class EditorState(private val root: File) {
                 }
             }
         }
-        result.onSuccess {
-            tabs.add(EditorTab(key, it))
+        result.onSuccess { text ->
+            val tab = EditorTab(key, text)
+            restoreDraft(tab)
+            tabs.add(tab)
             active = tabs.lastIndex
         }.onFailure {
             message = "Could not open $key: ${it.message}"
+        }
+    }
+
+    /** Brings back unsaved typing from an earlier session, if it was typed on top of the text that is on disk now. */
+    private fun restoreDraft(tab: EditorTab) {
+        val draft = runCatching { drafts.load(tab.path) }.getOrNull() ?: return
+        when {
+            draft.text == tab.savedText -> runCatching { drafts.delete(tab.path) }
+            draft.baseHash == tab.savedText.hashCode() -> {
+                tab.restore(draft.text)
+                message = "Restored unsaved typing in ${tab.name}"
+            }
+            else -> {
+                runCatching { drafts.delete(tab.path) }
+                message = "Dropped an old draft of ${tab.name} because the file changed"
+            }
         }
     }
 
@@ -127,6 +204,7 @@ class EditorState(private val root: File) {
         val start = (pos + column - 1).coerceIn(0, text.length)
         val end = (start + length).coerceAtMost(text.length)
         tab.value = tab.value.copy(selection = TextRange(start, end))
+        active = tabs.indexOf(tab)
     }
 
     suspend fun create(name: String) {
@@ -151,13 +229,14 @@ class EditorState(private val root: File) {
         open(rel)
     }
 
-    suspend fun save(tab: EditorTab) {
+    suspend fun save(tab: EditorTab, quiet: Boolean = false) {
         val f = resolve(tab.path) ?: return
         val text = tab.value.text
         runCatching { withContext(Dispatchers.IO) { f.writeText(text) } }
             .onSuccess {
                 tab.savedText = text
-                message = "Saved ${tab.path}"
+                if (!tab.dirty) runCatching { drafts.delete(tab.path) }
+                if (!quiet) message = "Saved ${tab.path}"
             }
             .onFailure { message = "Could not save ${tab.path}: ${it.message}" }
     }
@@ -177,6 +256,7 @@ class EditorState(private val root: File) {
         val i = tabs.indexOf(tab)
         if (i < 0) return
         tabs.removeAt(i)
+        runCatching { drafts.delete(tab.path) }
         if (i < active) active--
         active = active.coerceIn(0, maxOf(0, tabs.lastIndex))
     }
@@ -185,6 +265,55 @@ class EditorState(private val root: File) {
     fun switchTab(delta: Int) {
         if (tabs.size < 2) return
         active = (active + delta + tabs.size) % tabs.size
+    }
+
+    // ---- Keeping work safe ----
+
+    /**
+     * Writes a draft for every tab whose text changed since the last time, and removes the draft of a tab that is back to
+     * its saved text. Cheap when nothing changed. Safe to call from any thread.
+     */
+    @Synchronized
+    fun flushDrafts() {
+        for (t in tabs.toList()) {
+            val version = t.editVersion
+            if (version == t.draftedVersion) continue
+            try {
+                if (t.dirty) drafts.save(t.path, t.value.text, t.savedText.hashCode()) else drafts.delete(t.path)
+                t.draftedVersion = version
+            } catch (e: IOException) {
+                // Try again on the next round.
+            }
+        }
+    }
+
+    /** Saves files whose typing stopped a couple of seconds ago, when auto save is on. */
+    suspend fun autoSaveTick() {
+        if (!settings.autoSave) return
+        val now = System.currentTimeMillis()
+        for (t in tabs.toList()) {
+            if (t.dirty && now - t.lastEditAt > AUTO_SAVE_AFTER_MS) save(t, quiet = true)
+        }
+    }
+
+    /** Remembers which tabs are open for the next start. Does nothing until the last session has been brought back. */
+    fun saveSession() {
+        if (!sessionReady) return
+        prefs.saveSession(tabs.map { it.path }, current?.path)
+    }
+
+    /** Opens the tabs that were open last time. Files that were deleted since are skipped. */
+    suspend fun restoreSession() {
+        if (sessionReady) return
+        if (tabs.isEmpty()) {
+            val (paths, activePath) = prefs.loadSession()
+            for (p in paths) {
+                if (resolve(p)?.isFile == true) open(p)
+            }
+            val idx = tabs.indexOfFirst { it.path == activePath }
+            if (idx >= 0) active = idx
+        }
+        sessionReady = true
     }
 
     // ---- Search in all files ----
@@ -198,19 +327,24 @@ class EditorState(private val root: File) {
     // ---- Editing ----
 
     private fun setText(tab: EditorTab, v: TextFieldValue, boundary: Boolean) {
+        val now = System.currentTimeMillis()
         tab.value = v
-        tab.history.record(v.text, v.selection.start, v.selection.end, System.currentTimeMillis(), boundary)
+        tab.history.record(v.text, v.selection.start, v.selection.end, now, boundary)
+        tab.editVersion++
+        tab.lastEditAt = now
     }
 
     /** Called for every change the text field reports. */
     fun onEdit(tab: EditorTab, new: TextFieldValue) {
-        val smart = smartEdit(tab.value, new, tab.lang, detectIndent(new.text))
+        val indent = settings.indentFor(detectIndent(new.text))
+        val smart = smartEdit(tab.value, new, tab.lang, indent, settings.autoPair)
         setText(tab, smart ?: new, boundary = smart != null)
     }
 
     private fun command(f: (TextFieldValue, String) -> TextFieldValue) {
         val tab = current ?: return
-        setText(tab, f(tab.value, detectIndent(tab.value.text)), boundary = true)
+        val indent = settings.indentFor(detectIndent(tab.value.text))
+        setText(tab, f(tab.value, indent), boundary = true)
     }
 
     fun insert(s: String) = command { v, _ -> insertAt(v, s) }
@@ -231,12 +365,20 @@ class EditorState(private val root: File) {
 
     fun undo() {
         val tab = current ?: return
-        tab.history.undo()?.let { tab.value = TextFieldValue(it.text, TextRange(it.selStart, it.selEnd)) }
+        tab.history.undo()?.let {
+            tab.value = TextFieldValue(it.text, TextRange(it.selStart, it.selEnd))
+            tab.editVersion++
+            tab.lastEditAt = System.currentTimeMillis()
+        }
     }
 
     fun redo() {
         val tab = current ?: return
-        tab.history.redo()?.let { tab.value = TextFieldValue(it.text, TextRange(it.selStart, it.selEnd)) }
+        tab.history.redo()?.let {
+            tab.value = TextFieldValue(it.text, TextRange(it.selStart, it.selEnd))
+            tab.editVersion++
+            tab.lastEditAt = System.currentTimeMillis()
+        }
     }
 
     // ---- Find and replace ----

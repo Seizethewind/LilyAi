@@ -1,7 +1,7 @@
 package ai.lily.app.editor
 
 import ai.lily.app.lib.editor.Lang
-import ai.lily.app.lib.editor.TokenKind
+import ai.lily.app.lib.editor.canPreview
 import ai.lily.app.lib.editor.fuzzyPathScore
 import ai.lily.app.lib.editor.fuzzyScore
 import ai.lily.app.lib.editor.highlight
@@ -33,7 +33,9 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TextField
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.compositionLocalOf
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.key
 import androidx.compose.runtime.mutableStateOf
@@ -52,7 +54,6 @@ import androidx.compose.ui.input.key.key
 import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.AnnotatedString
-import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -63,33 +64,22 @@ import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.delay
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
 
-private val Bg = Color(0xFF282A36)
-private val Panel = Color(0xFF21222C)
-private val Fg = Color(0xFFF8F8F2)
-private val Muted = Color(0xFF6272A4)
-private val Accent = Color(0xFFBD93F9)
+private val LocalEditorTheme = compositionLocalOf { EDITOR_THEMES.first() }
 
-private fun colorFor(kind: TokenKind): Color = when (kind) {
-    TokenKind.KEYWORD -> Color(0xFFFF79C6)
-    TokenKind.TYPE -> Color(0xFF8BE9FD)
-    TokenKind.STRING -> Color(0xFFF1FA8C)
-    TokenKind.COMMENT -> Color(0xFF6272A4)
-    TokenKind.NUMBER -> Color(0xFFBD93F9)
-    TokenKind.LITERAL -> Color(0xFFBD93F9)
-    TokenKind.TAG -> Color(0xFFFF79C6)
-    TokenKind.ATTRIBUTE -> Color(0xFF50FA7B)
-    TokenKind.PROPERTY -> Color(0xFF50FA7B)
-    TokenKind.HEADING -> Color(0xFFFFB86C)
-}
-
-private class HighlightTransformation(private val lang: Lang) : VisualTransformation {
+private class HighlightTransformation(
+    private val lang: Lang,
+    private val theme: EditorTheme,
+) : VisualTransformation {
     override fun filter(text: AnnotatedString): TransformedText {
         val s = text.text
         val b = AnnotatedString.Builder(s)
         for (sp in highlight(s, lang)) {
-            b.addStyle(SpanStyle(color = colorFor(sp.kind)), sp.start, sp.end)
+            b.addStyle(theme.style(sp.kind), sp.start, sp.end)
         }
         return TransformedText(b.toAnnotatedString(), OffsetMapping.Identity)
     }
@@ -100,6 +90,14 @@ private class Command(val title: String, val hint: String = "", val run: () -> U
 
 @Composable
 fun EditorScreen(state: EditorState) {
+    val theme = state.theme
+    CompositionLocalProvider(LocalEditorTheme provides theme) {
+        EditorContent(state, theme)
+    }
+}
+
+@Composable
+private fun EditorContent(state: EditorState, theme: EditorTheme) {
     val scope = rememberCoroutineScope()
     var showOpen by remember { mutableStateOf(false) }
     var showNew by remember { mutableStateOf(false) }
@@ -108,12 +106,26 @@ fun EditorScreen(state: EditorState) {
     var showQuick by remember { mutableStateOf(false) }
     var showPalette by remember { mutableStateOf(false) }
     var showSearchAll by remember { mutableStateOf(false) }
+    var showSettings by remember { mutableStateOf(false) }
     val tab = state.current
+
+    // Brings back the tabs from last time, then every moment keeps a copy of unsaved typing and does auto save.
+    LaunchedEffect(Unit) {
+        state.restoreSession()
+        while (true) {
+            delay(1_500)
+            withContext(Dispatchers.IO) { state.flushDrafts() }
+            state.autoSaveTick()
+        }
+    }
+
+    val previewable = tab != null && canPreview(tab.path)
+    val mode = if (previewable) state.preview else PreviewMode.OFF
 
     Column(
         Modifier
             .fillMaxSize()
-            .background(Bg)
+            .background(theme.background)
             .statusBarsPadding()
             .navigationBarsPadding()
             .imePadding()
@@ -146,7 +158,7 @@ fun EditorScreen(state: EditorState) {
             },
     ) {
         // File actions
-        Row(Modifier.fillMaxWidth().background(Panel).horizontalScroll(rememberScrollState())) {
+        Row(Modifier.fillMaxWidth().background(theme.gutterBackground).horizontalScroll(rememberScrollState())) {
             BarButton("Files") { showQuick = true }
             BarButton("Commands") { showPalette = true }
             BarButton("Search all") { showSearchAll = true }
@@ -155,28 +167,37 @@ fun EditorScreen(state: EditorState) {
             BarButton("Save", enabled = tab != null) { tab?.let { scope.launch { state.save(it) } } }
             BarButton("Save all", enabled = state.tabs.any { it.dirty }) { scope.launch { state.saveAll() } }
             BarButton("Find", enabled = tab != null) { showFind = !showFind }
+            BarButton(
+                when (mode) {
+                    PreviewMode.OFF -> "Preview"
+                    PreviewMode.SPLIT -> "Preview: split"
+                    PreviewMode.FULL -> "Preview: full"
+                },
+                enabled = previewable,
+            ) { state.cyclePreview() }
+            BarButton("Settings") { showSettings = true }
         }
 
         // Tabs
         if (state.tabs.isNotEmpty()) {
-            LazyRow(Modifier.fillMaxWidth().background(Panel)) {
+            LazyRow(Modifier.fillMaxWidth().background(theme.gutterBackground)) {
                 itemsIndexed(state.tabs) { i, t ->
                     Row(
                         Modifier
-                            .background(if (i == state.active) Bg else Panel)
+                            .background(if (i == state.active) theme.background else theme.gutterBackground)
                             .clickable { state.active = i }
                             .padding(horizontal = 12.dp, vertical = 8.dp),
                         verticalAlignment = Alignment.CenterVertically,
                     ) {
                         Text(
                             t.name + if (t.dirty) " •" else "",
-                            color = if (i == state.active) Fg else Muted,
+                            color = if (i == state.active) theme.foreground else theme.gutterForeground,
                             maxLines = 1,
                             overflow = TextOverflow.Ellipsis,
                         )
                         Text(
                             "  ✕",
-                            color = Muted,
+                            color = theme.gutterForeground,
                             modifier = Modifier.clickable { state.close(t) }.padding(4.dp),
                         )
                     }
@@ -189,7 +210,7 @@ fun EditorScreen(state: EditorState) {
         state.message?.let { msg ->
             Text(
                 msg,
-                color = Fg,
+                color = Color.White,
                 modifier = Modifier
                     .fillMaxWidth()
                     .background(Color(0xFF44475A))
@@ -199,15 +220,34 @@ fun EditorScreen(state: EditorState) {
         }
 
         // Editor
-        Box(Modifier.weight(1f).fillMaxWidth()) {
-            if (tab == null) {
-                Text(
-                    "Open a file or create a new one",
-                    color = Muted,
-                    modifier = Modifier.align(Alignment.Center),
+        if (mode != PreviewMode.FULL) {
+            Box(Modifier.weight(1f).fillMaxWidth()) {
+                if (tab == null) {
+                    Text(
+                        "Open a file or create a new one",
+                        color = theme.gutterForeground,
+                        modifier = Modifier.align(Alignment.Center),
+                    )
+                } else {
+                    key(tab) { CodeArea(tab, state, Modifier.fillMaxSize()) }
+                }
+            }
+        }
+
+        // Preview and console
+        if (mode != PreviewMode.OFF && tab != null) {
+            key(tab.path) {
+                PreviewPane(
+                    root = state.root,
+                    path = tab.path,
+                    text = tab.value.text,
+                    tabs = state.tabs,
+                    onJump = { p, line ->
+                        if (state.preview == PreviewMode.FULL) state.preview = PreviewMode.SPLIT
+                        scope.launch { state.openAt(p, line, 1, 0) }
+                    },
+                    modifier = Modifier.weight(1f).fillMaxWidth(),
                 )
-            } else {
-                key(tab) { CodeArea(tab, state, Modifier.fillMaxSize()) }
             }
         }
 
@@ -215,9 +255,12 @@ fun EditorScreen(state: EditorState) {
             val pos = lineColumn(tab.value.text, tab.value.selection.start)
             Text(
                 "${tab.lang.label}    Ln ${pos.first}, Col ${pos.second}",
-                color = Muted,
+                color = theme.gutterForeground,
                 fontSize = 12.sp,
-                modifier = Modifier.fillMaxWidth().background(Panel).padding(horizontal = 12.dp, vertical = 4.dp),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .background(theme.gutterBackground)
+                    .padding(horizontal = 12.dp, vertical = 4.dp),
             )
             QuickTools(state, onGoto = { showGoto = true })
         }
@@ -290,6 +333,8 @@ fun EditorScreen(state: EditorState) {
             Command("Find and replace", "Ctrl+F") { if (tab != null) showFind = true },
             Command("Search in all files", "Ctrl+Shift+F") { showSearchAll = true },
             Command("Go to line", "Ctrl+G") { if (tab != null) showGoto = true },
+            Command("Toggle preview") { state.cyclePreview() },
+            Command("Editor settings") { showSettings = true },
             Command("Undo") { state.undo() },
             Command("Redo") { state.redo() },
             Command("Duplicate line") { state.duplicateLine() },
@@ -325,6 +370,8 @@ fun EditorScreen(state: EditorState) {
             },
         )
     }
+
+    if (showSettings) SettingsDialog(state) { showSettings = false }
 
     if (showNew) {
         var name by remember { mutableStateOf("") }
@@ -374,47 +421,60 @@ fun EditorScreen(state: EditorState) {
 
 @Composable
 private fun BarButton(label: String, enabled: Boolean = true, onClick: () -> Unit) {
+    val theme = LocalEditorTheme.current
     TextButton(onClick = onClick, enabled = enabled) {
-        Text(label, color = if (enabled) Fg else Muted)
+        Text(label, color = if (enabled) theme.foreground else theme.gutterForeground)
     }
 }
 
 @Composable
 private fun CodeArea(tab: EditorTab, state: EditorState, modifier: Modifier) {
+    val theme = LocalEditorTheme.current
+    val settings = state.settings
     val value = tab.value
+    val wrap = settings.wordWrap
+    val showNumbers = settings.lineNumbers && !wrap
     val lineCount = value.text.count { it == '\n' } + 1
     val gutter = remember(lineCount) { (1..lineCount).joinToString("\n") }
     val big = value.text.length > MAX_HIGHLIGHT_CHARS
-    val transformation = remember(tab.lang, big) {
-        if (big) VisualTransformation.None else HighlightTransformation(tab.lang)
+    val transformation = remember(tab.lang, big, theme) {
+        if (big) VisualTransformation.None else HighlightTransformation(tab.lang, theme)
     }
     val codeStyle = TextStyle(
         fontFamily = FontFamily.Monospace,
-        fontSize = 14.sp,
-        lineHeight = 20.sp,
-        color = Fg,
+        fontSize = state.fontSize.sp,
+        lineHeight = (state.fontSize * settings.spacing.factor).sp,
+        color = theme.foreground,
     )
+    val horizontal = rememberScrollState()
     Row(modifier.verticalScroll(rememberScrollState())) {
-        Text(
-            gutter,
-            style = codeStyle.copy(color = Muted, textAlign = TextAlign.End),
-            modifier = Modifier.padding(horizontal = 8.dp).widthIn(min = 24.dp),
-        )
-        // The field sits in a horizontal scroll area, so it gets unbounded width and lines do not wrap.
-        Box(Modifier.weight(1f).horizontalScroll(rememberScrollState())) {
+        if (showNumbers) {
+            Text(
+                gutter,
+                style = codeStyle.copy(color = theme.gutterForeground, textAlign = TextAlign.End),
+                modifier = Modifier
+                    .background(theme.gutterBackground)
+                    .padding(horizontal = 8.dp)
+                    .widthIn(min = 24.dp),
+            )
+        }
+        // Without word wrap the field sits in a horizontal scroll area, so it gets unbounded width and lines do not wrap.
+        Box(Modifier.weight(1f).then(if (wrap) Modifier else Modifier.horizontalScroll(horizontal))) {
             BasicTextField(
                 value = value,
                 onValueChange = { state.onEdit(tab, it) },
-                modifier = Modifier
-                    .defaultMinSize(minWidth = 320.dp, minHeight = 400.dp)
-                    .padding(end = 24.dp),
+                modifier = if (wrap) {
+                    Modifier.fillMaxWidth().defaultMinSize(minHeight = 400.dp).padding(horizontal = 8.dp)
+                } else {
+                    Modifier.defaultMinSize(minWidth = 320.dp, minHeight = 400.dp).padding(end = 24.dp)
+                },
                 textStyle = codeStyle,
                 keyboardOptions = KeyboardOptions(
                     capitalization = KeyboardCapitalization.None,
                     autoCorrectEnabled = false,
                 ),
                 visualTransformation = transformation,
-                cursorBrush = SolidColor(Accent),
+                cursorBrush = SolidColor(theme.cursor),
             )
         }
     }
@@ -422,7 +482,8 @@ private fun CodeArea(tab: EditorTab, state: EditorState, modifier: Modifier) {
 
 @Composable
 private fun FindBar(state: EditorState) {
-    Column(Modifier.fillMaxWidth().background(Panel).padding(6.dp)) {
+    val theme = LocalEditorTheme.current
+    Column(Modifier.fillMaxWidth().background(theme.gutterBackground).padding(6.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextField(
                 value = state.findQuery,
@@ -450,20 +511,21 @@ private fun FindBar(state: EditorState) {
         }
         Row(verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = { state.caseSensitive = !state.caseSensitive }) {
-                Text("Aa", color = if (state.caseSensitive) Accent else Muted)
+                Text("Aa", color = if (state.caseSensitive) theme.cursor else theme.gutterForeground)
             }
             TextButton(onClick = { state.useRegex = !state.useRegex }) {
-                Text(".*", color = if (state.useRegex) Accent else Muted)
+                Text(".*", color = if (state.useRegex) theme.cursor else theme.gutterForeground)
             }
-            state.findInfo?.let { Text(it, color = Fg, fontSize = 12.sp) }
+            state.findInfo?.let { Text(it, color = theme.foreground, fontSize = 12.sp) }
         }
     }
 }
 
 @Composable
 private fun QuickTools(state: EditorState, onGoto: () -> Unit) {
+    val theme = LocalEditorTheme.current
     val symbols = listOf("(", ")", "{", "}", "[", "]", ";", ":", "\"", "'", "<", ">", "/", "=", "_", "\\", "|", "&", "#")
-    Column(Modifier.fillMaxWidth().background(Panel)) {
+    Column(Modifier.fillMaxWidth().background(theme.gutterBackground)) {
         Row(Modifier.horizontalScroll(rememberScrollState())) {
             BarButton("Undo", enabled = state.current?.history?.canUndo == true) { state.undo() }
             BarButton("Redo", enabled = state.current?.history?.canRedo == true) { state.redo() }
