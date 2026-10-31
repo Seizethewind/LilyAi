@@ -2,6 +2,7 @@ package ai.lily.app.editor
 
 import ai.lily.app.lib.editor.FindOptions
 import ai.lily.app.lib.editor.Lang
+import ai.lily.app.lib.editor.ProjectSearchResult
 import ai.lily.app.lib.editor.UndoHistory
 import ai.lily.app.lib.editor.buildFindRegex
 import ai.lily.app.lib.editor.deleteLines
@@ -13,6 +14,7 @@ import ai.lily.app.lib.editor.insertAt
 import ai.lily.app.lib.editor.languageFor
 import ai.lily.app.lib.editor.replaceEvery
 import ai.lily.app.lib.editor.replaceOne
+import ai.lily.app.lib.editor.searchFiles
 import ai.lily.app.lib.editor.shiftIndent
 import ai.lily.app.lib.editor.smartEdit
 import ai.lily.app.lib.editor.toggleLineComment
@@ -109,6 +111,24 @@ class EditorState(private val root: File) {
         }
     }
 
+    /** Opens [rel] and selects the match at 1 based [line] and [column], [length] characters long. */
+    suspend fun openAt(rel: String, line: Int, column: Int, length: Int) {
+        open(rel)
+        val tab = tabs.firstOrNull { it.path == rel } ?: return
+        val text = tab.value.text
+        var pos = 0
+        var l = 1
+        while (l < line) {
+            val i = text.indexOf('\n', pos)
+            if (i < 0) break
+            pos = i + 1
+            l++
+        }
+        val start = (pos + column - 1).coerceIn(0, text.length)
+        val end = (start + length).coerceAtMost(text.length)
+        tab.value = tab.value.copy(selection = TextRange(start, end))
+    }
+
     suspend fun create(name: String) {
         val rel = name.trim().trimStart('/')
         if (rel.isEmpty()) return
@@ -159,6 +179,20 @@ class EditorState(private val root: File) {
         tabs.removeAt(i)
         if (i < active) active--
         active = active.coerceIn(0, maxOf(0, tabs.lastIndex))
+    }
+
+    /** Moves to the next ([delta] = 1) or previous (-1) tab, wrapping around. */
+    fun switchTab(delta: Int) {
+        if (tabs.size < 2) return
+        active = (active + delta + tabs.size) % tabs.size
+    }
+
+    // ---- Search in all files ----
+
+    /** Searches every file in the workspace. Files with unsaved typing are searched as they are on screen. */
+    suspend fun searchAll(options: FindOptions): ProjectSearchResult {
+        val overrides = tabs.filter { it.dirty }.associate { it.path to it.value.text }
+        return withContext(Dispatchers.IO) { searchFiles(root, options, overrides) }
     }
 
     // ---- Editing ----

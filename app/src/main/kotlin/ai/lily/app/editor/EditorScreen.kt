@@ -2,6 +2,8 @@ package ai.lily.app.editor
 
 import ai.lily.app.lib.editor.Lang
 import ai.lily.app.lib.editor.TokenKind
+import ai.lily.app.lib.editor.fuzzyPathScore
+import ai.lily.app.lib.editor.fuzzyScore
 import ai.lily.app.lib.editor.highlight
 import ai.lily.app.lib.editor.lineColumn
 import androidx.compose.foundation.background
@@ -42,6 +44,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.SolidColor
+import androidx.compose.ui.input.key.Key
+import androidx.compose.ui.input.key.KeyEventType
+import androidx.compose.ui.input.key.isCtrlPressed
+import androidx.compose.ui.input.key.isShiftPressed
+import androidx.compose.ui.input.key.key
+import androidx.compose.ui.input.key.onPreviewKeyEvent
+import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.SpanStyle
 import androidx.compose.ui.text.TextStyle
@@ -86,6 +95,9 @@ private class HighlightTransformation(private val lang: Lang) : VisualTransforma
     }
 }
 
+/** One entry in the command palette. */
+private class Command(val title: String, val hint: String = "", val run: () -> Unit)
+
 @Composable
 fun EditorScreen(state: EditorState) {
     val scope = rememberCoroutineScope()
@@ -93,6 +105,9 @@ fun EditorScreen(state: EditorState) {
     var showNew by remember { mutableStateOf(false) }
     var showGoto by remember { mutableStateOf(false) }
     var showFind by remember { mutableStateOf(false) }
+    var showQuick by remember { mutableStateOf(false) }
+    var showPalette by remember { mutableStateOf(false) }
+    var showSearchAll by remember { mutableStateOf(false) }
     val tab = state.current
 
     Column(
@@ -101,10 +116,40 @@ fun EditorScreen(state: EditorState) {
             .background(Bg)
             .statusBarsPadding()
             .navigationBarsPadding()
-            .imePadding(),
+            .imePadding()
+            .onPreviewKeyEvent { e ->
+                // Hardware keyboard shortcuts.
+                if (e.type != KeyEventType.KeyDown || !e.isCtrlPressed) return@onPreviewKeyEvent false
+                when (e.key) {
+                    Key.P -> {
+                        if (e.isShiftPressed) showPalette = true else showQuick = true
+                        true
+                    }
+
+                    Key.F -> {
+                        if (e.isShiftPressed) showSearchAll = true else if (tab != null) showFind = true
+                        true
+                    }
+
+                    Key.S -> {
+                        tab?.let { t -> scope.launch { state.save(t) } }
+                        true
+                    }
+
+                    Key.G -> {
+                        if (tab != null) showGoto = true
+                        true
+                    }
+
+                    else -> false
+                }
+            },
     ) {
         // File actions
         Row(Modifier.fillMaxWidth().background(Panel).horizontalScroll(rememberScrollState())) {
+            BarButton("Files") { showQuick = true }
+            BarButton("Commands") { showPalette = true }
+            BarButton("Search all") { showSearchAll = true }
             BarButton("Open") { showOpen = true }
             BarButton("New") { showNew = true }
             BarButton("Save", enabled = tab != null) { tab?.let { scope.launch { state.save(it) } } }
@@ -208,6 +253,75 @@ fun EditorScreen(state: EditorState) {
                         }
                     }
                 }
+            },
+        )
+    }
+
+    if (showQuick) {
+        var files by remember { mutableStateOf<List<String>>(emptyList()) }
+        LaunchedEffect(Unit) { files = state.listFiles() }
+        val opened = state.tabs.map { it.path }
+        // Files that are already open come first.
+        val options = remember(files, opened) {
+            (opened + files.filter { it !in opened }).map {
+                PickItem(title = it.substringAfterLast('/'), subtitle = it.substringBeforeLast('/', ""), key = it)
+            }
+        }
+        PickerDialog(
+            title = "Quick open",
+            placeholder = "File name",
+            options = options,
+            scorer = { q, item -> fuzzyPathScore(q, item.key) },
+            onDismiss = { showQuick = false },
+            onPick = { item ->
+                showQuick = false
+                scope.launch { state.open(item.key) }
+            },
+        )
+    }
+
+    if (showPalette) {
+        val commands = listOf(
+            Command("Quick open file", "Ctrl+P") { showQuick = true },
+            Command("Open file list") { showOpen = true },
+            Command("New file") { showNew = true },
+            Command("Save", "Ctrl+S") { tab?.let { scope.launch { state.save(it) } } },
+            Command("Save all") { scope.launch { state.saveAll() } },
+            Command("Find and replace", "Ctrl+F") { if (tab != null) showFind = true },
+            Command("Search in all files", "Ctrl+Shift+F") { showSearchAll = true },
+            Command("Go to line", "Ctrl+G") { if (tab != null) showGoto = true },
+            Command("Undo") { state.undo() },
+            Command("Redo") { state.redo() },
+            Command("Duplicate line") { state.duplicateLine() },
+            Command("Delete line") { state.deleteLine() },
+            Command("Toggle comment") { state.toggleComment() },
+            Command("Indent") { state.indent() },
+            Command("Unindent") { state.unindent() },
+            Command("Next tab") { state.switchTab(1) },
+            Command("Previous tab") { state.switchTab(-1) },
+            Command("Close tab") { tab?.let { state.close(it) } },
+        )
+        val options = remember { commands.map { PickItem(title = it.title, subtitle = it.hint, key = it.title) } }
+        PickerDialog(
+            title = "Commands",
+            placeholder = "Type a command",
+            options = options,
+            scorer = { q, item -> fuzzyScore(q, item.title) },
+            onDismiss = { showPalette = false },
+            onPick = { item ->
+                showPalette = false
+                commands.firstOrNull { it.title == item.key }?.run?.invoke()
+            },
+        )
+    }
+
+    if (showSearchAll) {
+        SearchAllDialog(
+            state = state,
+            onDismiss = { showSearchAll = false },
+            onOpenHit = { path, hit ->
+                showSearchAll = false
+                scope.launch { state.openAt(path, hit.line, hit.column, hit.length) }
             },
         )
     }
