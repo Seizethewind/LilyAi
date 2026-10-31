@@ -6,6 +6,8 @@ import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
+import androidx.compose.material3.lightColorScheme
+import ai.lily.app.lib.editor.DraftStore
 import java.io.File
 
 /** The Acode style code editor. Files live in the app's own `workspace` folder. */
@@ -16,11 +18,21 @@ class EditorActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val root = File(filesDir, "workspace").apply { mkdirs() }
-        state = EditorState(root)
+        val drafts = DraftStore(File(filesDir, "drafts"))
+        state = EditorState(root, drafts, EditorPrefs(applicationContext))
         setContent {
-            MaterialTheme(colorScheme = darkColorScheme()) {
+            MaterialTheme(colorScheme = if (state.theme.dark) darkColorScheme() else lightColorScheme()) {
                 EditorScreen(state)
             }
+        }
+    }
+
+    /** The app can be killed any time after it leaves the screen, so unsaved typing and the open tabs are written down now. */
+    override fun onStop() {
+        super.onStop()
+        if (::state.isInitialized) {
+            state.flushDrafts()
+            state.saveSession()
         }
     }
 }
