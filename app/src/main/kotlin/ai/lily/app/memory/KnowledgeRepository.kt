@@ -1,8 +1,6 @@
 package ai.lily.app.memory
 
 import java.util.UUID
-import kotlinx.coroutines.sync.Mutex
-import kotlinx.coroutines.sync.withLock
 
 /**
  * Notebooks, the shared library of sources, and notes, stored in the knowledge database.
@@ -19,19 +17,9 @@ class KnowledgeRepository(
     private val now: () -> Long = { System.currentTimeMillis() },
     private val newId: () -> String = { UUID.randomUUID().toString() },
 ) {
-    private val migrator = KnowledgeSchema.migrator(db)
-    private val gate = Mutex()
-    private var isReady = false
+    private val schema = SchemaGate(KnowledgeSchema.migrator(db))
 
-    private suspend fun ensureReady() {
-        if (isReady) return
-        gate.withLock {
-            if (!isReady) {
-                migrator.migrate()
-                isReady = true
-            }
-        }
-    }
+    private suspend fun ensureReady() = schema.ensure()
 
     // ---- Notebooks ----
 
@@ -145,11 +133,13 @@ class KnowledgeRepository(
         return result.rows.map(::infoOf)
     }
 
-    /** Removes the source from the library, from every notebook and from every note's citations. Notes stay. */
+    /** Removes the source from the library, from every notebook, from every note's citations, and its search chunks. Notes stay. */
     suspend fun deleteSource(id: String): Boolean {
         ensureReady()
         val results = db.transaction(
             listOf(
+                Stmt(DELETE_SOURCE_CHUNKS, listOf(id)),
+                Stmt(DELETE_SOURCE_INDEX, listOf(id)),
                 Stmt(DELETE_SOURCE_CITATIONS, listOf(id)),
                 Stmt(DELETE_SOURCE_LINKS, listOf(id)),
                 Stmt(DELETE_SOURCE, listOf(id)),
@@ -307,6 +297,8 @@ class KnowledgeRepository(
         const val SELECT_SOURCE = "SELECT $INFO_COLS, s.content FROM sources s WHERE s.id = ?"
         const val LIST_SOURCES = "SELECT $INFO_COLS FROM sources s ORDER BY s.updated_at DESC, s.id"
         const val LIST_NOTEBOOK_SOURCES = "SELECT $INFO_COLS FROM sources s JOIN notebook_sources ns ON ns.source_id = s.id WHERE ns.notebook_id = ? ORDER BY ns.added_at DESC, s.id"
+        const val DELETE_SOURCE_CHUNKS = "DELETE FROM chunks WHERE source_id = ?"
+        const val DELETE_SOURCE_INDEX = "DELETE FROM source_index WHERE source_id = ?"
         const val DELETE_SOURCE_CITATIONS = "DELETE FROM note_sources WHERE source_id = ?"
         const val DELETE_SOURCE_LINKS = "DELETE FROM notebook_sources WHERE source_id = ?"
         const val DELETE_SOURCE = "DELETE FROM sources WHERE id = ?"

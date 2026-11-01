@@ -1,7 +1,7 @@
 # Roadmap: Acode leftovers + the knowledge layer
 
 Final plan, 13 phases. Each phase is one small pull request that builds on its own and leaves `main` working.
-Done so far: editor core, navigation, preview and settings, and the agent bridge (see `docs/code-editor.md`, `docs/agent-editor.md`), then phases 1 to 3 below (see `docs/editor-files.md`, `docs/knowledge-groundwork.md`, `docs/knowledge-data-model.md`).
+Done so far: editor core, navigation, preview and settings, and the agent bridge (see `docs/code-editor.md`, `docs/agent-editor.md`), then phases 1 to 4 below (see `docs/editor-files.md`, `docs/knowledge-groundwork.md`, `docs/knowledge-data-model.md`, `docs/knowledge-search.md`).
 
 ## Rules for every phase
 
@@ -35,5 +35,6 @@ Podcasts, speech to text and text to speech, a web UI and REST API, Docker and S
 ## Open questions
 
 - Which embedding model and vector size (affects storage and which providers work).
-- Whether Turso supports full-text search; if not, keyword search is scored in the app (phase 2 checks this).
-- Whether the person's real Turso database accepts the phase 3 SQL (`CHECK` constraints, a partial unique index, `ON CONFLICT ... DO UPDATE`). It will say so the first time the knowledge migrations run on it.
+- Whether Turso supports full-text search. Phase 4 keyword search does not need it (it ranks in the app), so a database-side path would only be an optimisation; the Check button's answer is still unrecorded.
+- Whether the person's real Turso database accepts the SQL from phases 3 and 4 (`CHECK` constraints, a partial unique index, `ON CONFLICT ... DO UPDATE`, multi-row `INSERT`). It will say so the first time the knowledge migrations and indexing run on it.
+- Whether Turso's HTTP API accepts the size of a request that indexes a large source (about 1 MB for a 1 MB source). If not, indexing needs to write in several transactions.
