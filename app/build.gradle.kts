@@ -68,4 +68,6 @@ dependencies {
     testImplementation(libs.junit)
     // Android's org.json is only a stub in unit tests; this real one lets the Turso request/response JSON be tested.
     testImplementation("org.json:json:20240303")
+    // A real SQLite in memory, so the knowledge layer's migrations and queries are tested against actual SQL (tests only).
+    testImplementation("org.xerial:sqlite-jdbc:3.46.1.0")
 }

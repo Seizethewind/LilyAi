@@ -1,7 +1,7 @@
 # Roadmap: Acode leftovers + the knowledge layer
 
 Final plan, 13 phases. Each phase is one small pull request that builds on its own and leaves `main` working.
-Done so far: editor core, navigation, preview and settings, and the agent bridge (see `docs/code-editor.md`, `docs/agent-editor.md`).
+Done so far: editor core, navigation, preview and settings, and the agent bridge (see `docs/code-editor.md`, `docs/agent-editor.md`), then phases 1 to 3 below (see `docs/editor-files.md`, `docs/knowledge-groundwork.md`, `docs/knowledge-data-model.md`).
 
 ## Rules for every phase
 
@@ -36,3 +36,4 @@ Podcasts, speech to text and text to speech, a web UI and REST API, Docker and S
 
 - Which embedding model and vector size (affects storage and which providers work).
 - Whether Turso supports full-text search; if not, keyword search is scored in the app (phase 2 checks this).
+- Whether the person's real Turso database accepts the phase 3 SQL (`CHECK` constraints, a partial unique index, `ON CONFLICT ... DO UPDATE`). It will say so the first time the knowledge migrations run on it.
