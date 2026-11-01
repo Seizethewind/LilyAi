@@ -3,7 +3,7 @@ package ai.lily.app.memory
 import ai.lily.app.settings.AppSettings
 
 /**
- * The knowledge database (`knowledgeDb`): notebooks, sources and notes. Chunks and search arrive in later phases.
+ * The knowledge database (`knowledgeDb`): notebooks, sources, notes, and the chunks of each source. Meaning search arrives later.
  * It is a third database. It is never the proven facts database or the journal.
  *
  * Ids are text (UUIDs made by the app) so a note and its citations can be written in one transaction.
@@ -40,6 +40,15 @@ object KnowledgeSchema {
                 "CREATE INDEX IF NOT EXISTS idx_notes_notebook ON notes (notebook_id, updated_at)",
                 "CREATE TABLE IF NOT EXISTS note_sources (note_id TEXT NOT NULL, source_id TEXT NOT NULL, PRIMARY KEY (note_id, source_id))",
                 "CREATE INDEX IF NOT EXISTS idx_note_sources_source ON note_sources (source_id)",
+            ),
+        ),
+        Migration(
+            version = 4,
+            description = "Chunks of each source with their line ranges, and a record of what each source was last chunked from",
+            statements = listOf(
+                "CREATE TABLE IF NOT EXISTS chunks (id TEXT PRIMARY KEY, source_id TEXT NOT NULL, ordinal INTEGER NOT NULL, start_line INTEGER NOT NULL, end_line INTEGER NOT NULL, text TEXT NOT NULL, tokens INTEGER NOT NULL, created_at INTEGER NOT NULL)",
+                "CREATE UNIQUE INDEX IF NOT EXISTS idx_chunks_source_ordinal ON chunks (source_id, ordinal)",
+                "CREATE TABLE IF NOT EXISTS source_index (source_id TEXT PRIMARY KEY, content_hash TEXT NOT NULL, settings TEXT NOT NULL, chunk_count INTEGER NOT NULL, indexed_at INTEGER NOT NULL)",
             ),
         ),
     )
