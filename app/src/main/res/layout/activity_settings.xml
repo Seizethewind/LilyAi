@@ -21,6 +21,15 @@
         <EditText android:id="@+id/facts_url" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Facts DB URL (libsql://...)" android:inputType="textUri" />
         <EditText android:id="@+id/facts_token" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Facts DB token" android:inputType="textPassword" />
 
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Turso: Knowledge (a third, separate database)" android:textSize="18sp" />
+        <EditText android:id="@+id/knowledge_url" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Knowledge DB URL (libsql://...)" android:inputType="textUri" />
+        <EditText android:id="@+id/knowledge_token" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Knowledge DB token" android:inputType="textPassword" />
+        <Button
+            android:id="@+id/check_knowledge"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Check knowledge database" />
+
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Pandastack" android:textSize="18sp" />
         <EditText android:id="@+id/panda_url" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="API URL (default api.pandastack.ai)" android:inputType="textUri" />
         <EditText android:id="@+id/panda_key" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Pandastack API key" android:inputType="textPassword" />
