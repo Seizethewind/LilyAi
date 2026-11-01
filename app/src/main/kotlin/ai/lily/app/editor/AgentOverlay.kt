@@ -40,11 +40,11 @@ private const val MAX_DIFF_LINES = 300
 /**
  * A small "Ask Lily" button over the editor, a "Review" button when changes are waiting, and the dialogs behind them.
  * Lily sees the open files; what she changes comes back as proposals shown as a diff, and nothing is applied until you accept.
+ * The Ask dialog can also be opened from the command palette, through [ui].
  */
 @Composable
-fun AgentOverlay(session: AgentSession, modifier: Modifier = Modifier) {
+fun AgentOverlay(session: AgentSession, ui: EditorUi, modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
-    var showAsk by remember { mutableStateOf(false) }
     val pending = session.proposals.size
 
     Row(
@@ -54,15 +54,15 @@ fun AgentOverlay(session: AgentSession, modifier: Modifier = Modifier) {
         if (pending > 0) {
             FilledTonalButton(onClick = { session.startReview() }) { Text("Review $pending") }
         }
-        Button(onClick = { if (!session.busy) showAsk = true }) {
+        Button(onClick = { if (!session.busy) ui.ask = true }) {
             Text(if (session.busy) "Lily is working\u2026" else "Ask Lily")
         }
     }
 
-    if (showAsk) {
+    if (ui.ask) {
         var text by remember { mutableStateOf("") }
         AlertDialog(
-            onDismissRequest = { showAsk = false },
+            onDismissRequest = { ui.ask = false },
             title = { Text("Ask Lily") },
             text = {
                 Column {
@@ -83,13 +83,13 @@ fun AgentOverlay(session: AgentSession, modifier: Modifier = Modifier) {
             confirmButton = {
                 TextButton(onClick = {
                     val request = text.trim()
-                    if (request.isNotEmpty()) {
-                        showAsk = false
+                    if (request.isNotEmpty() && !session.busy) {
+                        ui.ask = false
                         scope.launch { session.ask(request) }
                     }
                 }) { Text("Send") }
             },
-            dismissButton = { TextButton(onClick = { showAsk = false }) { Text("Cancel") } },
+            dismissButton = { TextButton(onClick = { ui.ask = false }) { Text("Cancel") } },
         )
     }
 

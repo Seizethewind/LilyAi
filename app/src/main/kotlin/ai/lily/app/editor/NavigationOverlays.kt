@@ -15,6 +15,7 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.text.KeyboardActions
 import androidx.compose.foundation.text.KeyboardOptions
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -111,7 +112,10 @@ private sealed interface ResultRow {
     class Hit(val path: String, val hit: FileMatch) : ResultRow
 }
 
-/** Search in all files of the workspace. Files with unsaved typing are searched as they are on screen. */
+/**
+ * Search in all files of the workspace. Files with unsaved typing are searched as they are on screen.
+ * With a replacement typed in, the checked files can have every match replaced (after a confirmation).
+ */
 @Composable
 fun SearchAllDialog(
     state: EditorState,
@@ -119,14 +123,20 @@ fun SearchAllDialog(
     onOpenHit: (path: String, hit: FileMatch) -> Unit,
 ) {
     val scope = rememberCoroutineScope()
+    val ops = LocalWorkspaceOps.current
     var query by remember { mutableStateOf("") }
+    var replaceWith by remember { mutableStateOf("") }
     var caseSensitive by remember { mutableStateOf(false) }
     var useRegex by remember { mutableStateOf(false) }
     var busy by remember { mutableStateOf(false) }
     var error by remember { mutableStateOf<String?>(null) }
     var result by remember { mutableStateOf<ProjectSearchResult?>(null) }
+    var excluded by remember(result) { mutableStateOf(setOf<String>()) }
+    var confirmReplace by remember { mutableStateOf(false) }
     val focus = remember { FocusRequester() }
     LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+
+    fun options() = FindOptions(query, caseSensitive = caseSensitive, regex = useRegex)
 
     fun runSearch() {
         if (query.isEmpty() || busy) return
@@ -134,7 +144,7 @@ fun SearchAllDialog(
         error = null
         scope.launch {
             try {
-                result = state.searchAll(FindOptions(query, caseSensitive = caseSensitive, regex = useRegex))
+                result = state.searchAll(options())
             } catch (e: IllegalArgumentException) {
                 error = "Invalid pattern"
                 result = null
@@ -152,6 +162,10 @@ fun SearchAllDialog(
         }
     }
 
+    val r = result
+    val chosen = r?.files?.map { it.path }?.filter { it !in excluded }.orEmpty()
+    val canReplace = ops != null && r != null && !r.truncated && chosen.isNotEmpty() && !busy
+
     AlertDialog(
         onDismissRequest = onDismiss,
         confirmButton = { TextButton(onClick = onDismiss) { Text("Close") } },
@@ -167,6 +181,16 @@ fun SearchAllDialog(
                     keyboardActions = KeyboardActions(onSearch = { runSearch() }),
                     modifier = Modifier.fillMaxWidth().focusRequester(focus),
                 )
+                if (ops != null) {
+                    TextField(
+                        value = replaceWith,
+                        onValueChange = { replaceWith = it },
+                        singleLine = true,
+                        placeholder = { Text("Replace with") },
+                        keyboardOptions = KeyboardOptions(autoCorrectEnabled = false),
+                        modifier = Modifier.fillMaxWidth().padding(top = 4.dp),
+                    )
+                }
                 Row(verticalAlignment = Alignment.CenterVertically) {
                     TextButton(onClick = { caseSensitive = !caseSensitive }) {
                         Text("Aa", color = if (caseSensitive) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
@@ -175,10 +199,14 @@ fun SearchAllDialog(
                         Text(".*", color = if (useRegex) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurfaceVariant)
                     }
                     TextButton(onClick = { runSearch() }, enabled = query.isNotEmpty() && !busy) {
-                        Text(if (busy) "Searching…" else "Search")
+                        Text(if (busy) "Working\u2026" else "Search")
+                    }
+                    if (ops != null) {
+                        TextButton(onClick = { confirmReplace = true }, enabled = canReplace) {
+                            Text("Replace in ${chosen.size}")
+                        }
                     }
                 }
-                val r = result
                 when {
                     error != null -> Text(error ?: "")
                     r == null -> Unit
@@ -190,20 +218,40 @@ fun SearchAllDialog(
                             fontSize = 12.sp,
                             color = MaterialTheme.colorScheme.onSurfaceVariant,
                         )
+                        if (ops != null && r.truncated) {
+                            Text(
+                                "Too many matches to replace safely. Narrow the search first.",
+                                fontSize = 12.sp,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
                     }
                 }
                 if (rows.isNotEmpty()) {
-                    LazyColumn(Modifier.heightIn(max = 320.dp)) {
+                    LazyColumn(Modifier.heightIn(max = 300.dp)) {
                         items(rows) { row ->
                             when (row) {
-                                is ResultRow.Header -> Text(
-                                    row.path,
-                                    fontWeight = FontWeight.Bold,
-                                    color = MaterialTheme.colorScheme.primary,
-                                    maxLines = 1,
-                                    overflow = TextOverflow.Ellipsis,
-                                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
-                                )
+                                is ResultRow.Header -> Row(
+                                    Modifier.fillMaxWidth().padding(top = 8.dp),
+                                    verticalAlignment = Alignment.CenterVertically,
+                                ) {
+                                    if (ops != null) {
+                                        Checkbox(
+                                            checked = row.path !in excluded,
+                                            onCheckedChange = { on ->
+                                                excluded = if (on) excluded - row.path else excluded + row.path
+                                            },
+                                        )
+                                    }
+                                    Text(
+                                        row.path,
+                                        fontWeight = FontWeight.Bold,
+                                        color = MaterialTheme.colorScheme.primary,
+                                        maxLines = 1,
+                                        overflow = TextOverflow.Ellipsis,
+                                        modifier = Modifier.weight(1f),
+                                    )
+                                }
 
                                 is ResultRow.Hit -> {
                                     val hit = row.hit
@@ -234,4 +282,30 @@ fun SearchAllDialog(
             }
         },
     )
+
+    if (confirmReplace && ops != null) {
+        AlertDialog(
+            onDismissRequest = { confirmReplace = false },
+            title = { Text("Replace in ${chosen.size} files?") },
+            text = {
+                Text(
+                    "Every match in the checked files is replaced, not only the ones listed. Files open in tabs change in the editor " +
+                        "and can be undone. Other files are written to disk and cannot be undone.",
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    confirmReplace = false
+                    busy = true
+                    scope.launch {
+                        val message = ops.replaceInFiles(options(), replaceWith, chosen)
+                        state.message = message
+                        busy = false
+                        onDismiss()
+                    }
+                }) { Text("Replace") }
+            },
+            dismissButton = { TextButton(onClick = { confirmReplace = false }) { Text("Cancel") } },
+        )
+    }
 }
