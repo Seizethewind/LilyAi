@@ -85,19 +85,22 @@ private class HighlightTransformation(
     }
 }
 
+/** An entry the host adds to the command palette (for example "Ask Lily"). */
+class ExtraCommand(val title: String, val hint: String = "", val run: () -> Unit)
+
 /** One entry in the command palette. */
 private class Command(val title: String, val hint: String = "", val run: () -> Unit)
 
 @Composable
-fun EditorScreen(state: EditorState) {
+fun EditorScreen(state: EditorState, extraCommands: List<ExtraCommand> = emptyList()) {
     val theme = state.theme
     CompositionLocalProvider(LocalEditorTheme provides theme) {
-        EditorContent(state, theme)
+        EditorContent(state, theme, extraCommands)
     }
 }
 
 @Composable
-private fun EditorContent(state: EditorState, theme: EditorTheme) {
+private fun EditorContent(state: EditorState, theme: EditorTheme, extraCommands: List<ExtraCommand>) {
     val scope = rememberCoroutineScope()
     var showOpen by remember { mutableStateOf(false) }
     var showNew by remember { mutableStateOf(false) }
@@ -331,7 +334,7 @@ private fun EditorContent(state: EditorState, theme: EditorTheme) {
             Command("Save", "Ctrl+S") { tab?.let { scope.launch { state.save(it) } } },
             Command("Save all") { scope.launch { state.saveAll() } },
             Command("Find and replace", "Ctrl+F") { if (tab != null) showFind = true },
-            Command("Search in all files", "Ctrl+Shift+F") { showSearchAll = true },
+            Command("Search and replace in all files", "Ctrl+Shift+F") { showSearchAll = true },
             Command("Go to line", "Ctrl+G") { if (tab != null) showGoto = true },
             Command("Toggle preview") { state.cyclePreview() },
             Command("Editor settings") { showSettings = true },
@@ -345,8 +348,8 @@ private fun EditorContent(state: EditorState, theme: EditorTheme) {
             Command("Next tab") { state.switchTab(1) },
             Command("Previous tab") { state.switchTab(-1) },
             Command("Close tab") { tab?.let { state.close(it) } },
-        )
-        val options = remember { commands.map { PickItem(title = it.title, subtitle = it.hint, key = it.title) } }
+        ) + extraCommands.map { Command(it.title, it.hint, it.run) }
+        val options = remember(extraCommands) { commands.map { PickItem(title = it.title, subtitle = it.hint, key = it.title) } }
         PickerDialog(
             title = "Commands",
             placeholder = "Type a command",
