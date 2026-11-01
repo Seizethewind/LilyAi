@@ -17,6 +17,7 @@ import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
+import kotlin.coroutines.cancellation.CancellationException
 
 /** Lets the user enter router, Turso (Journal, Proven facts and Knowledge) and Pandastack settings. */
 class SettingsActivity : AppCompatActivity() {
@@ -43,11 +44,12 @@ class SettingsActivity : AppCompatActivity() {
 
         findViewById<Button>(R.id.check_knowledge).setOnClickListener { checkKnowledge() }
         findViewById<Button>(R.id.save).setOnClickListener {
-            val problem = KnowledgeSchema.configProblem(build())
+            val settings = build()
+            val problem = KnowledgeSchema.configProblem(settings)
             if (problem != null) {
                 show("Not saved", problem)
             } else {
-                store.save(build())
+                store.save(settings)
                 finish()
             }
         }
@@ -61,9 +63,8 @@ class SettingsActivity : AppCompatActivity() {
     private fun field(id: Int) = findViewById<EditText>(id)
     private fun value(id: Int) = field(id).text.toString().trim()
 
-    private fun show(title: String, message: String) {
+    private fun show(title: String, message: String): AlertDialog =
         AlertDialog.Builder(this).setTitle(title).setMessage(message).setPositiveButton("OK", null).show()
-    }
 
     private fun build(): AppSettings {
         val journal = value(R.id.journal_url).takeIf { it.isNotEmpty() }
@@ -100,13 +101,16 @@ class SettingsActivity : AppCompatActivity() {
             show("Knowledge database", it)
             return
         }
-        show("Knowledge database", "Checking\u2026")
+        val waiting = show("Knowledge database", "Checking\u2026")
         scope.launch {
             val text = try {
                 CapabilityProbe(TursoClient(config)).run().summary()
+            } catch (e: CancellationException) {
+                throw e
             } catch (e: Exception) {
                 "Could not reach the database: ${e.message}"
             }
+            waiting.dismiss()
             show("Knowledge database", text)
         }
     }
