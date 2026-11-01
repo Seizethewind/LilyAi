@@ -124,7 +124,8 @@ class KnowledgeAsker(
         val total = HashMap<String, Double>()
         for (q in queries) {
             val result = search.search(q, notebookId, PER_QUERY)
-            result.note?.let { notes += it }
+            val why = result.note
+            if (why != null) notes.add(why)
             for (h in result.hits) {
                 best.putIfAbsent(h.hit.chunkId, h.hit)
                 total[h.hit.chunkId] = (total[h.hit.chunkId] ?: 0.0) + h.score
@@ -147,7 +148,8 @@ class KnowledgeAsker(
         chosen.forEachIndexed { i, h ->
             val title = h.sourceTitle.replace('"', '\'').replace(Regex("\\s+"), " ").trim()
             append("<excerpt n=\"${i + 1}\" source=\"$title\" lines=\"${lines(h.startLine, h.endLine)}\">\n")
-            append(h.text.take(MAX_CONTEXT_CHARS).replace(CLOSING_TAG, "<\\/excerpt"))
+            // A lambda keeps the replacement literal; a plain string would treat the backslash as an escape.
+            append(h.text.take(MAX_CONTEXT_CHARS).replace(CLOSING_TAG) { "<\\/excerpt" })
             append("\n</excerpt>\n\n")
         }
         append("Question: $question")
