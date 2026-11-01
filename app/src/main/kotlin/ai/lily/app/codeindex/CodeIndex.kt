@@ -130,14 +130,18 @@ class CodeIndex(
      * Replaces one file's chunks with [text], or drops the file when [text] is null, blank, binary or minified. The file is marked
      * for a check at the next [sync], which finds its text unchanged and only refreshes the stamp.
      */
-    suspend fun update(path: String, text: String?) = mutex.withLock {
+    suspend fun update(path: String, text: String?) {
+        mutex.withLock { updateLocked(path, text) }
+    }
+
+    private fun updateLocked(path: String, text: String?) {
         val old = files[path]
         if (text == null || text.isBlank() || CodeFilter.looksGenerated(text)) {
             if (old != null) removeFile(path)
-            return@withLock
+            return
         }
         val hash = KnowledgeText.hash(text)
-        if (old != null && old.hash == hash) return@withLock
+        if (old != null && old.hash == hash) return
         if (old != null) removeFile(path)
         addFile(path, FileStamp(-1, -1), hash, text)
         leftOut.remove(path)

@@ -1,5 +1,6 @@
 package ai.lily.app.workers
 
+import ai.lily.app.codeindex.WorkspaceIndex
 import ai.lily.app.core.Task
 import ai.lily.app.core.TaskResult
 import ai.lily.app.gateway.ModelGateway
@@ -20,11 +21,16 @@ import ai.lily.app.tools.ProposedEdit
  * It shows the model the open files (with typing that is not saved yet) and asks for edit blocks. Each file's blocks are
  * applied all or nothing against the text the person sees. If some do not fit, the model gets one chance to correct them.
  * What worked is handed to the editor as a proposal; nothing is written until the person accepts it.
+ *
+ * With a [related] index it also shows a few other files of the project that the request seems to be about (see
+ * [WorkspaceIndex.relatedTo]), so a change can reach beyond the open tabs. Only small files are added, up to four, and the reply
+ * says which ones were read.
  */
 class EditPipeline(
     private val gateway: ModelGateway,
     private val editor: EditorBridge,
     private val model: String,
+    private val related: WorkspaceIndex? = null,
 ) {
     suspend fun run(task: Task, extraSystem: String = ""): TaskResult {
         val open = editor.openFiles()
@@ -33,6 +39,17 @@ class EditPipeline(
         for (f in open.sortedByDescending { it.active }) texts[f.path] = f.text
         for (p in listing) {
             if (p !in texts && mentions(task.description, p)) editor.readFile(p)?.let { texts[p] = it }
+        }
+        val alsoRead = ArrayList<String>()
+        if (related != null) {
+            var spent = 0
+            for (r in related.relatedTo(task.description, exclude = texts.keys.toSet(), maxFiles = EXTRA_FILES)) {
+                val text = editor.readFile(r.path) ?: continue
+                if (text.length > MAX_EXTRA_FILE_CHARS || spent + text.length > MAX_EXTRA_TOTAL_CHARS) continue
+                texts[r.path] = text
+                spent += text.length
+                alsoRead += r.path
+            }
         }
         val activePath = open.firstOrNull { it.active }?.path
         val system = EDIT_SYSTEM_PROMPT + extraSystem
@@ -79,6 +96,7 @@ class EditPipeline(
             out.append("\n\nCould not apply:\n")
             for ((p, errs) in failures) out.append("- ").append(p).append(": ").append(errs.joinToString("; ")).append('\n')
         }
+        if (alsoRead.isNotEmpty()) out.append("\n\nAlso read for context: ").append(alsoRead.joinToString(", ")).append('.')
         return TaskResult(task.id, out.toString().trim(), failures.isEmpty())
     }
 
@@ -125,4 +143,10 @@ class EditPipeline(
     private fun mentions(description: String, path: String): Boolean =
         description.contains(path, ignoreCase = true) ||
             description.contains(path.substringAfterLast('/'), ignoreCase = true)
+
+    private companion object {
+        const val EXTRA_FILES = 4
+        const val MAX_EXTRA_FILE_CHARS = 8_000
+        const val MAX_EXTRA_TOTAL_CHARS = 20_000
+    }
 }
