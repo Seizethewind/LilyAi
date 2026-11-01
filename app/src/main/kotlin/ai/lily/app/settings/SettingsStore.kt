@@ -45,6 +45,8 @@ class EncryptedSettingsStore(context: Context) : SettingsStore {
                     template = get("panda_template").ifBlank { pandaDefault.template },
                 )
             },
+            knowledgeDb = get("knowledge_url").takeIf { it.isNotBlank() }
+                ?.let { TursoConfig(it, get("knowledge_token")) },
         )
     }
 
@@ -58,6 +60,8 @@ class EncryptedSettingsStore(context: Context) : SettingsStore {
             .putString("journal_token", settings.journalDb?.authToken.orEmpty())
             .putString("facts_url", settings.factsDb?.url.orEmpty())
             .putString("facts_token", settings.factsDb?.authToken.orEmpty())
+            .putString("knowledge_url", settings.knowledgeDb?.url.orEmpty())
+            .putString("knowledge_token", settings.knowledgeDb?.authToken.orEmpty())
             .putString("panda_url", settings.pandastack?.apiUrl.orEmpty())
             .putString("panda_key", settings.pandastack?.apiKey.orEmpty())
             .putString("panda_template", settings.pandastack?.template.orEmpty())
