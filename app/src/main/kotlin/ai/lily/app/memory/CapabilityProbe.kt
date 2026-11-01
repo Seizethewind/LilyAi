@@ -1,5 +1,7 @@
 package ai.lily.app.memory
 
+import kotlin.coroutines.cancellation.CancellationException
+
 /** How the app will do a kind of search, decided by what the database supports. */
 enum class SearchPath { IN_DATABASE, IN_APP }
 
@@ -38,6 +40,8 @@ class CapabilityProbe(private val db: SqlDatabase) {
     private suspend fun attempt(name: String, okDetail: String, block: suspend () -> Boolean): Capability =
         try {
             if (block()) Capability(name, true, okDetail) else Capability(name, false, "The database answered, but not as expected.")
+        } catch (e: CancellationException) {
+            throw e
         } catch (e: Exception) {
             Capability(name, false, (e.message ?: e::class.simpleName ?: "error").lineSequence().first().take(160))
         }
