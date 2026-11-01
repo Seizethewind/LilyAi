@@ -3,7 +3,7 @@ package ai.lily.app.memory
 import ai.lily.app.settings.AppSettings
 
 /**
- * The knowledge database (`knowledgeDb`): notebooks, sources, notes, and the chunks of each source. Meaning search arrives later.
+ * The knowledge database (`knowledgeDb`): notebooks, sources, notes, the chunks of each source, and the meaning vectors of those chunks.
  * It is a third database. It is never the proven facts database or the journal.
  *
  * Ids are text (UUIDs made by the app) so a note and its citations can be written in one transaction.
@@ -49,6 +49,16 @@ object KnowledgeSchema {
                 "CREATE TABLE IF NOT EXISTS chunks (id TEXT PRIMARY KEY, source_id TEXT NOT NULL, ordinal INTEGER NOT NULL, start_line INTEGER NOT NULL, end_line INTEGER NOT NULL, text TEXT NOT NULL, tokens INTEGER NOT NULL, created_at INTEGER NOT NULL)",
                 "CREATE UNIQUE INDEX IF NOT EXISTS idx_chunks_source_ordinal ON chunks (source_id, ordinal)",
                 "CREATE TABLE IF NOT EXISTS source_index (source_id TEXT PRIMARY KEY, content_hash TEXT NOT NULL, settings TEXT NOT NULL, chunk_count INTEGER NOT NULL, indexed_at INTEGER NOT NULL)",
+            ),
+        ),
+        Migration(
+            version = 5,
+            description = "One meaning vector per chunk: which model made it, how many numbers it has, and the numbers as base64 text",
+            statements = listOf(
+                // Turso's HTTP wire here has no blob type, so the float32 numbers are kept as base64 text (see VectorCodec).
+                "CREATE TABLE IF NOT EXISTS chunk_embeddings (chunk_id TEXT PRIMARY KEY, source_id TEXT NOT NULL, model TEXT NOT NULL, dims INTEGER NOT NULL, vector TEXT NOT NULL, created_at INTEGER NOT NULL)",
+                "CREATE INDEX IF NOT EXISTS idx_chunk_embeddings_model ON chunk_embeddings (model, chunk_id)",
+                "CREATE INDEX IF NOT EXISTS idx_chunk_embeddings_source ON chunk_embeddings (source_id)",
             ),
         ),
     )
