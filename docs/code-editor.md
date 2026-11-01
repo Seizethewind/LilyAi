@@ -49,15 +49,20 @@ Files live in the app's own `workspace` folder (`filesDir/workspace`). Files ove
   leaves the screen. If the app is closed or killed, the typing comes back when the file is opened again, as long as the file on
   disk has not changed since. Open tabs, and which one was active, are remembered too.
 
+## Phase 1: editor finish
+
+Replace across files, new folder, rename and delete, and "Ask Lily" in Commands. See `docs/editor-files.md`.
+
 ## Where the code is
 
 - `lib/editor/` (plain Kotlin, unit tested): `SyntaxHighlighter`, `EditorText`, `TextSearch`, `UndoHistory`, `FuzzyMatch`,
-  `ProjectSearch`, `Markdown`, `PreviewPage`, `DraftStore`, `EditorSettings`.
+  `ProjectSearch`, `ProjectReplace`, `Markdown`, `PreviewPage`, `DraftStore`, `EditorSettings`.
 - `editor/EditorState.kt`: tabs, files, settings, drafts, find state and editing commands.
 - `editor/EditorScreen.kt`, `NavigationOverlays.kt`, `SettingsDialog.kt`, `PreviewPane.kt`, `PreviewServer.kt`, `EditorTheme.kt`,
   `EditorPrefs.kt`, `EditorActivity.kt`: the screens, dialogs and storage.
-- `app/src/test/kotlin/.../`: `EditorLogicTest`, `NavigationLogicTest` and `PreviewAndDraftsTest`.
+- `editor/WorkspaceOps.kt`, `WorkspaceDialogs.kt`: folders, rename, delete and replace across files.
+- `app/src/test/kotlin/.../`: `EditorLogicTest`, `NavigationLogicTest`, `PreviewAndDraftsTest` and `ProjectReplaceTest`.
 
 ## Not done yet
 
-Connecting the editor to CodingWorker and FileWorker (step 4); replace across files, fonts, FTP/SFTP and plugins (step 5).
+Fonts and large files (phase 8), FTP/SFTP (phase 12) and plugins (phase 13). See `docs/ROADMAP.md`.
