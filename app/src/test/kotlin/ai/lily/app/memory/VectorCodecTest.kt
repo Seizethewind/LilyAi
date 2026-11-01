@@ -14,7 +14,7 @@ class VectorCodecTest {
         val back = VectorCodec.decode(VectorCodec.encode(v), v.size)
 
         assertNotNull(back)
-        assertArrayEquals(v, back, 0f)
+        assertArrayEquals(v, back!!, 0f)
     }
 
     @Test

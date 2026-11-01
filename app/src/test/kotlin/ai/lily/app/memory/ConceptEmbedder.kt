@@ -2,8 +2,8 @@ package ai.lily.app.memory
 
 /**
  * A stand-in for a real embedding model, for tests. Words belong to concepts and each concept is one axis, so "spaghetti" and
- * "noodles" point the same way without sharing a letter, and unrelated words are at right angles. The last axis is a tiny constant
- * so no text ever gets the all-zero vector.
+ * "noodles" point the same way without sharing a letter, and unrelated words are at right angles (similarity exactly 0).
+ * A text with no known word gets a tiny value on the last axis so it never becomes the all-zero vector.
  */
 class ConceptEmbedder(private val tag: String = "fake-model", private val dims: Int = CONCEPTS.size + 1) : Embedder {
     val calls = ArrayList<List<String>>()
@@ -21,7 +21,7 @@ class ConceptEmbedder(private val tag: String = "fake-model", private val dims: 
         val v = FloatArray(dims)
         val words = text.lowercase().split(Regex("[^a-z]+")).filter { it.isNotEmpty() }
         for (w in words) CONCEPTS.forEachIndexed { axis, group -> if (w in group) v[axis] += 1f }
-        v[dims - 1] = 0.001f
+        if (v.all { it == 0f }) v[dims - 1] = 0.001f
         return v
     }
 

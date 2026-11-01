@@ -79,21 +79,22 @@ class HybridSearchTest {
     fun aChunkBothListsLikeBeatsOneOnlyOneLikes() = runBlocking<Unit> {
         val cooking = add("Cooking", "Boil the spaghetti until tender.")
         val menu = add("Menu", "Pasta of the day is penne.")
-        val essay = add("Essay", "Spaghetti westerns are long films about gunfights and revenge and dusty towns.")
+        val essay = add("Essay", "Spaghetti westerns feature a fox and a dog and many gunfights.")
         embeds.embedPending()
 
         val result = hybrid.search("spaghetti")
 
-        // Cooking and the essay both contain the word; the essay is weaker by meaning. The menu has the meaning but not the word.
+        // Cooking has the word and the meaning. The essay has the word but is mostly about animals. The menu has only the meaning.
         val bySource = result.hits.associateBy { it.hit.sourceId }
         assertEquals(setOf(cooking.info.id, menu.info.id, essay.info.id), bySource.keys)
         assertEquals(cooking.info.id, result.hits[0].hit.sourceId)
         assertNotNull(bySource.getValue(cooking.info.id).keywordRank)
         assertNotNull(bySource.getValue(cooking.info.id).vectorRank)
         assertNull(bySource.getValue(menu.info.id).keywordRank)
+        assertNotNull(bySource.getValue(essay.info.id).keywordRank)
+        assertTrue(bySource.getValue(essay.info.id).similarity!! < 0.5)
         assertTrue(result.hits.zipWithNext().all { (a, b) -> a.score >= b.score })
-        val top = result.hits[0]
-        assertEquals(1.0 / 61 + 1.0 / 61, top.score, 1e-9)
+        assertEquals(1.0 / 61 + 1.0 / 61, result.hits[0].score, 1e-9)
     }
 
     @Test
@@ -155,12 +156,19 @@ class HybridSearchTest {
     }
 
     @Test
-    fun minSimilarityDropsWeakMeaningMatches() = runBlocking<Unit> {
-        library()
+    fun minSimilarityDropsWeakMeaningMatchesButNotKeywordMatches() = runBlocking<Unit> {
+        val (cooking, _, zoo) = library()
 
-        // "fox noodles" is half about animals, half about pasta: both are about 0.7 similar.
-        assertEquals(2, hybrid.search("fox noodles").hits.size)
-        assertEquals(0, hybrid.search("fox noodles", minSimilarity = 0.9).hits.size)
+        // "fox noodles" is half about animals and half about pasta: the zoo and the cooking chunk are each about 0.7 similar.
+        val loose = hybrid.search("fox noodles")
+        assertEquals(setOf(cooking.info.id, zoo.info.id), loose.hits.map { it.hit.sourceId }.toSet())
+
+        // Above 0.9 neither counts by meaning, but the zoo chunk still contains the word "fox".
+        val strict = hybrid.search("fox noodles", minSimilarity = 0.9)
+        val only = strict.hits.single()
+        assertEquals(zoo.info.id, only.hit.sourceId)
+        assertNotNull(only.keywordRank)
+        assertNull(only.vectorRank)
     }
 
     @Test
