@@ -66,4 +66,6 @@ dependencies {
     implementation(libs.androidx.activity.compose)
 
     testImplementation(libs.junit)
+    // Android's org.json is only a stub in unit tests; this real one lets the Turso request/response JSON be tested.
+    testImplementation("org.json:json:20240303")
 }
