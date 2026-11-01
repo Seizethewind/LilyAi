@@ -11,6 +11,7 @@ import ai.lily.app.memory.TursoJournal
 import ai.lily.app.memory.TursoProvenFacts
 import ai.lily.app.sandbox.PandaStackClient
 import ai.lily.app.settings.AppSettings
+import ai.lily.app.tools.EditorBridge
 import ai.lily.app.tools.SandboxTool
 import ai.lily.app.tools.TerminalTool
 import ai.lily.app.tools.ToolSystem
@@ -24,7 +25,8 @@ import ai.lily.app.workers.ResearchWorker
 
 /** Wires everything together from the user's settings. */
 object LilyFactory {
-    fun create(settings: AppSettings): Lily {
+    /** [editor] is how the coding and file workers see and change the files open in the code editor. Without it they only answer. */
+    fun create(settings: AppSettings, editor: EditorBridge? = null): Lily {
         val gateway = RouterModelGateway(settings.router)
 
         val tools = ToolSystem().apply {
@@ -34,11 +36,11 @@ object LilyFactory {
         }
 
         val manager = WorkerManager().apply {
-            register(CodingWorker(gateway, tools))
+            register(CodingWorker(gateway, tools, editor))
             register(ResearchWorker(gateway, tools))
             register(BuildWorker(gateway, tools))
             register(GitWorker(gateway, tools))
-            register(FileWorker(gateway, tools))
+            register(FileWorker(gateway, tools, editor))
             register(GeneralWorker(gateway, tools))
         }
 
