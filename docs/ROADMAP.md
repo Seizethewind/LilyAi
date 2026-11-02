@@ -1,7 +1,7 @@
 # Roadmap: Acode leftovers + the knowledge layer
 
 Final plan, 13 phases. Each phase is one small pull request that builds on its own and leaves `main` working.
-Done so far: editor core, navigation, preview and settings, and the agent bridge (see `docs/code-editor.md`, `docs/agent-editor.md`), then phases 1 to 4 below (see `docs/editor-files.md`, `docs/knowledge-groundwork.md`, `docs/knowledge-data-model.md`, `docs/knowledge-search.md`).
+Done so far: editor core, navigation, preview and settings, and the agent bridge (see `docs/code-editor.md`, `docs/agent-editor.md`), then phases 1 to 7 below on `main` (see `docs/editor-files.md`, `docs/knowledge-groundwork.md`, `docs/knowledge-data-model.md`, `docs/knowledge-search.md`, `docs/knowledge-embeddings.md`, `docs/knowledge-ask.md`, `docs/workspace-index.md`). Phase 8 (`docs/editor-fonts-large-files.md`) and phase 9 (`docs/knowledge-context.md`) are written on their own branches and wait for review and merge. None of the knowledge phases has a screen yet.
 
 ## Rules for every phase
 
@@ -36,5 +36,6 @@ Podcasts, speech to text and text to speech, a web UI and REST API, Docker and S
 
 - Which embedding model and vector size (affects storage and which providers work).
 - Whether Turso supports full-text search. Phase 4 keyword search does not need it (it ranks in the app), so a database-side path would only be an optimisation; the Check button's answer is still unrecorded.
-- Whether the person's real Turso database accepts the SQL from phases 3 and 4 (`CHECK` constraints, a partial unique index, `ON CONFLICT ... DO UPDATE`, multi-row `INSERT`). It will say so the first time the knowledge migrations and indexing run on it.
+- Whether the person's real Turso database accepts the SQL from phases 3, 4 and 9 (`CHECK` constraints, a partial unique index, `ON CONFLICT ... DO UPDATE`, multi-row `INSERT`, `INSERT ... SELECT ... WHERE EXISTS ... ON CONFLICT`). It will say so the first time the knowledge migrations and indexing run on it.
 - Whether Turso's HTTP API accepts the size of a request that indexes a large source (about 1 MB for a 1 MB source). If not, indexing needs to write in several transactions.
+- Whether to add screens for the knowledge layer (notebooks, sources, context levels, ask, chat) before phase 10; none exists yet.
