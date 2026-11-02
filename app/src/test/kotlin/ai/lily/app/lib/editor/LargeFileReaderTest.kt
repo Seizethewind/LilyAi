@@ -181,11 +181,15 @@ class LargeFileReaderTest {
     }
 
     @Test
-    fun aCancelledSearchGivesUpQuietly() {
-        val r = needles()
+    fun aCancelledSearchGivesUpInsteadOfFindingALateMatch() {
+        // The only match is at line 4000, far past the first check for cancellation, so a search that ignored it would find it.
+        val text = (0 until 5_000).joinToString("\n") { if (it == 4_000) "needle" else "line $it" } + "\n"
+        val r = reader(write(text), every = 1_000)
 
+        assertEquals(4_000, r.findNext("needle", 0))
         assertNull(r.findNext("needle", 0, cancelled = { true }))
-        assertNull(r.findPrevious("needle", 4_000, cancelled = { true }))
+        assertEquals(4_000, r.findPrevious("needle", 4_999))
+        assertNull(r.findPrevious("needle", 4_999, cancelled = { true }))
     }
 
     @Test
