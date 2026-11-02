@@ -29,7 +29,7 @@ class VectorSearch(private val db: SqlDatabase, private val pageSize: Int = PAGE
     /**
      * The [limit] chunks closest in meaning to [query] (any length; it is compared by direction), closest first, among chunks
      * with a vector from [tag]. Only chunks with similarity above [minSimilarity] are returned. Pass [notebookId] to look only at
-     * the sources linked to that notebook.
+     * the sources linked to that notebook that are at the FULL context level there.
      */
     suspend fun nearest(
         query: FloatArray,
@@ -43,7 +43,11 @@ class VectorSearch(private val db: SqlDatabase, private val pageSize: Int = PAGE
         val queryNorm = VectorCodec.norm(query)
         if (query.isEmpty() || !queryNorm.isFinite() || queryNorm <= 0.0) return VectorScan(emptyList(), 0, true)
 
-        val join = if (notebookId == null) "" else " JOIN notebook_sources ns ON ns.source_id = c.source_id AND ns.notebook_id = ?"
+        val join = if (notebookId == null) {
+            ""
+        } else {
+            " JOIN notebook_sources ns ON ns.source_id = c.source_id AND ns.notebook_id = ? AND ${KnowledgeSchema.ONLY_FULL_CONTEXT}"
+        }
         val scope: List<Any> = if (notebookId == null) emptyList() else listOf(notebookId)
         val sql = "SELECT e.chunk_id, e.dims, e.vector FROM chunk_embeddings e JOIN chunks c ON c.id = e.chunk_id$join " +
             "WHERE e.model = ? AND e.chunk_id > ? ORDER BY e.chunk_id LIMIT ?"

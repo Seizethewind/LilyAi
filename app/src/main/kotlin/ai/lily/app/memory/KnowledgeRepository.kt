@@ -9,6 +9,7 @@ import java.util.UUID
  * - A note belongs to one notebook and may cite sources. An AI note is labelled by its [NoteOrigin] and is not evidence on its own.
  * - Writes that touch several tables run as one transaction. The tables are created and upgraded on first use.
  * - The proven facts database is never read or written here.
+ * - Deleting also cleans up what phase 9 keeps per notebook or per source (context levels, insights, chats); see [ContextRepository].
  *
  * Methods that look something up return null or false when it is not there. Bad input throws [IllegalArgumentException].
  */
@@ -58,13 +59,16 @@ class KnowledgeRepository(
         return db.execute(SET_ARCHIVED, listOf(if (archived) 1 else 0, now(), id)).affectedRows > 0
     }
 
-    /** Deletes the notebook and its notes. Sources stay in the library. */
+    /** Deletes the notebook, its notes, its chats and its context levels. Sources (and their insights) stay in the library. */
     suspend fun deleteNotebook(id: String): Boolean {
         ensureReady()
         val results = db.transaction(
             listOf(
                 Stmt(DELETE_NOTEBOOK_NOTE_SOURCES, listOf(id)),
                 Stmt(DELETE_NOTEBOOK_NOTES, listOf(id)),
+                Stmt(DELETE_NOTEBOOK_CHAT_MESSAGES, listOf(id)),
+                Stmt(DELETE_NOTEBOOK_CHATS, listOf(id)),
+                Stmt(DELETE_NOTEBOOK_CONTEXT, listOf(id)),
                 Stmt(DELETE_NOTEBOOK_LINKS, listOf(id)),
                 Stmt(DELETE_NOTEBOOK, listOf(id)),
             ),
@@ -133,13 +137,18 @@ class KnowledgeRepository(
         return result.rows.map(::infoOf)
     }
 
-    /** Removes the source from the library, from every notebook, from every note's citations, and its search chunks. Notes stay. */
+    /**
+     * Removes the source from the library, from every notebook (with its context level there), from every note's citations, and its
+     * search chunks and insights. Notes stay.
+     */
     suspend fun deleteSource(id: String): Boolean {
         ensureReady()
         val results = db.transaction(
             listOf(
                 Stmt(DELETE_SOURCE_CHUNKS, listOf(id)),
                 Stmt(DELETE_SOURCE_INDEX, listOf(id)),
+                Stmt(DELETE_SOURCE_INSIGHTS, listOf(id)),
+                Stmt(DELETE_SOURCE_CONTEXT, listOf(id)),
                 Stmt(DELETE_SOURCE_CITATIONS, listOf(id)),
                 Stmt(DELETE_SOURCE_LINKS, listOf(id)),
                 Stmt(DELETE_SOURCE, listOf(id)),
@@ -155,10 +164,16 @@ class KnowledgeRepository(
         return db.execute(ATTACH_SOURCE, args).affectedRows > 0
     }
 
-    /** Unlinks a source from a notebook. It stays in the library. */
+    /** Unlinks a source from a notebook, forgetting its context level there. It stays in the library. */
     suspend fun detachSource(notebookId: String, sourceId: String): Boolean {
         ensureReady()
-        return db.execute(DETACH_SOURCE, listOf(notebookId, sourceId)).affectedRows > 0
+        val results = db.transaction(
+            listOf(
+                Stmt(DELETE_LINK_CONTEXT, listOf(notebookId, sourceId)),
+                Stmt(DETACH_SOURCE, listOf(notebookId, sourceId)),
+            ),
+        )
+        return results.last().affectedRows > 0
     }
 
     // ---- Notes ----
@@ -288,6 +303,9 @@ class KnowledgeRepository(
         const val SET_ARCHIVED = "UPDATE notebooks SET archived = ?, updated_at = ? WHERE id = ?"
         const val DELETE_NOTEBOOK_NOTE_SOURCES = "DELETE FROM note_sources WHERE note_id IN (SELECT id FROM notes WHERE notebook_id = ?)"
         const val DELETE_NOTEBOOK_NOTES = "DELETE FROM notes WHERE notebook_id = ?"
+        const val DELETE_NOTEBOOK_CHAT_MESSAGES = "DELETE FROM chat_messages WHERE session_id IN (SELECT id FROM chat_sessions WHERE notebook_id = ?)"
+        const val DELETE_NOTEBOOK_CHATS = "DELETE FROM chat_sessions WHERE notebook_id = ?"
+        const val DELETE_NOTEBOOK_CONTEXT = "DELETE FROM source_context WHERE notebook_id = ?"
         const val DELETE_NOTEBOOK_LINKS = "DELETE FROM notebook_sources WHERE notebook_id = ?"
         const val DELETE_NOTEBOOK = "DELETE FROM notebooks WHERE id = ?"
 
@@ -299,10 +317,13 @@ class KnowledgeRepository(
         const val LIST_NOTEBOOK_SOURCES = "SELECT $INFO_COLS FROM sources s JOIN notebook_sources ns ON ns.source_id = s.id WHERE ns.notebook_id = ? ORDER BY ns.added_at DESC, s.id"
         const val DELETE_SOURCE_CHUNKS = "DELETE FROM chunks WHERE source_id = ?"
         const val DELETE_SOURCE_INDEX = "DELETE FROM source_index WHERE source_id = ?"
+        const val DELETE_SOURCE_INSIGHTS = "DELETE FROM source_insights WHERE source_id = ?"
+        const val DELETE_SOURCE_CONTEXT = "DELETE FROM source_context WHERE source_id = ?"
         const val DELETE_SOURCE_CITATIONS = "DELETE FROM note_sources WHERE source_id = ?"
         const val DELETE_SOURCE_LINKS = "DELETE FROM notebook_sources WHERE source_id = ?"
         const val DELETE_SOURCE = "DELETE FROM sources WHERE id = ?"
         const val ATTACH_SOURCE = "INSERT OR IGNORE INTO notebook_sources (notebook_id, source_id, added_at) SELECT ?, ?, ? WHERE EXISTS (SELECT 1 FROM notebooks WHERE id = ?) AND EXISTS (SELECT 1 FROM sources WHERE id = ?)"
+        const val DELETE_LINK_CONTEXT = "DELETE FROM source_context WHERE notebook_id = ? AND source_id = ?"
         const val DETACH_SOURCE = "DELETE FROM notebook_sources WHERE notebook_id = ? AND source_id = ?"
 
         const val INSERT_NOTE = "INSERT INTO notes (id, notebook_id, origin, title, body, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
