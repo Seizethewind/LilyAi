@@ -12,11 +12,11 @@ data class PandaStackConfig(
 data class ExecResult(val stdout: String, val stderr: String, val exitCode: Int)
 
 /** Pandastack REST client. See docs/pandastack.md for the endpoints and assumptions. */
-class PandaStackClient(private val config: PandaStackConfig) {
+class PandaStackClient(private val config: PandaStackConfig) : SandboxRunner {
     private val base = config.apiUrl.trimEnd('/')
     private val auth get() = mapOf("Authorization" to "Bearer ${config.apiKey}")
 
-    suspend fun createSandbox(ttlSeconds: Int = 600): String {
+    override suspend fun createSandbox(ttlSeconds: Int): String {
         val body = JSONObject().put("template", config.template).put("ttl_seconds", ttlSeconds)
         val resp = Http.postJson("$base/v1/sandboxes", body.toString(), auth)
         if (!resp.ok) error("Pandastack create ${resp.code}: ${resp.body}")
@@ -25,7 +25,7 @@ class PandaStackClient(private val config: PandaStackConfig) {
             .ifEmpty { error("Pandastack create: no sandbox id in ${resp.body}") }
     }
 
-    suspend fun exec(sandboxId: String, command: String): ExecResult {
+    override suspend fun exec(sandboxId: String, command: String): ExecResult {
         val body = JSONObject().put("cmd", command)
         val resp = Http.postJson("$base/v1/sandboxes/$sandboxId/exec", body.toString(), auth, 300_000)
         if (!resp.ok) error("Pandastack exec ${resp.code}: ${resp.body}")
@@ -37,7 +37,7 @@ class PandaStackClient(private val config: PandaStackConfig) {
         )
     }
 
-    suspend fun kill(sandboxId: String) {
+    override suspend fun kill(sandboxId: String) {
         Http.request("DELETE", "$base/v1/sandboxes/$sandboxId", headers = auth)
     }
 
