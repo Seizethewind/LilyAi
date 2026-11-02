@@ -4,7 +4,6 @@ import kotlinx.coroutines.runBlocking
 import org.junit.Assert.assertArrayEquals
 import org.junit.Assert.assertEquals
 import org.junit.Assert.assertFalse
-import org.junit.Assert.assertNull
 import org.junit.Assert.assertTrue
 import org.junit.Test
 import java.util.Base64
@@ -144,8 +143,8 @@ class WorkspaceBundlerTest {
 
     @Test
     fun badOptionsAreRefused() {
-        assertNull(runCatching { BundleLimits(pieceChars = 10) }.exceptionOrNull()?.let { null })
-        assertTrue(runCatching { BundleLimits(pieceChars = 7) }.isFailure)
+        assertTrue(runCatching { BundleLimits(pieceChars = 10) }.isFailure)
         assertTrue(runCatching { BundleLimits(pieceChars = 60_000, maxCommandChars = 61_000) }.isFailure)
+        assertTrue(runCatching { BundleLimits(pieceChars = 8, maxCommandChars = 5_000) }.isSuccess)
     }
 }
