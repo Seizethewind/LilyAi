@@ -33,8 +33,9 @@ class EditorActivity : ComponentActivity() {
         val ops = WorkspaceOps(state, drafts)
         val ui = EditorUi()
         val session = AgentSession(state)
-        // Lily is built the first time she is asked, from the router settings saved in Settings.
-        val lily by lazy { LilyFactory.create(EncryptedSettingsStore(applicationContext).load(), session.bridge) }
+        // Lily is built the first time she is asked, from the router settings saved in Settings. The project folder lets her coding
+        // worker find relevant files beyond the open tabs.
+        val lily by lazy { LilyFactory.create(EncryptedSettingsStore(applicationContext).load(), session.bridge, root) }
         session.responder = { request ->
             withContext(Dispatchers.Default) { lily.handle(request) }
                 .joinToString("\n\n") { it.output.trim() }
