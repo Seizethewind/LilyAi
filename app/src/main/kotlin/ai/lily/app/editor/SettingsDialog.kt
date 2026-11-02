@@ -1,11 +1,13 @@
 package ai.lily.app.editor
 
+import ai.lily.app.lib.editor.BuiltinFont
+import ai.lily.app.lib.editor.FontChoice
 import ai.lily.app.lib.editor.LineSpacing
 import ai.lily.app.lib.editor.TAB_SIZE_CHOICES
 import ai.lily.app.lib.editor.tabSizeLabel
 import androidx.compose.foundation.clickable
-import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
@@ -17,12 +19,14 @@ import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.remember
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.unit.sp
 
-/** Theme, text size, spacing, indent and the on/off switches. Every change is applied and saved straight away. */
+/** Theme, font, text size, spacing, indent and the on/off switches. Every change is applied and saved straight away. */
 @Composable
 fun SettingsDialog(state: EditorState, onDismiss: () -> Unit) {
     val s = state.settings
@@ -35,6 +39,35 @@ fun SettingsDialog(state: EditorState, onDismiss: () -> Unit) {
                 SectionTitle("Theme")
                 for (t in EDITOR_THEMES) {
                     ChoiceRow(t.name, selected = t.id == s.theme) { state.updateSettings(s.copy(theme = t.id)) }
+                }
+
+                SectionTitle("Font")
+                for (b in BuiltinFont.values()) {
+                    val id = FontChoice.Builtin(b).id
+                    ChoiceRow(b.label, selected = s.font == id) { state.updateSettings(s.copy(font = id)) }
+                }
+                val added = remember(state.fontsVersion) { state.fonts.list() }
+                for (name in added) {
+                    val id = FontChoice.Custom(name).id
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        ChoiceRow(name, selected = s.font == id, modifier = Modifier.weight(1f)) { state.updateSettings(s.copy(font = id)) }
+                        TextButton(onClick = { state.removeFont(name) }) { Text("\u2715") }
+                    }
+                }
+                TextButton(onClick = { state.importFont?.invoke() }, enabled = state.importFont != null) { Text("Add a font file\u2026") }
+                state.fontProblem?.let { Text(it, color = MaterialTheme.colorScheme.error, fontSize = 12.sp) }
+                Text(
+                    "The quick brown fox 0O 1lI {}[]()",
+                    fontFamily = state.fontFamily,
+                    fontSize = state.fontSize.sp,
+                    modifier = Modifier.padding(top = 6.dp),
+                )
+                if (s.font != FontChoice.DEFAULT_ID) {
+                    Text(
+                        "Code lines up best in a monospace font. Add your own .ttf or .otf file; none are shipped with the app.",
+                        fontSize = 12.sp,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                 }
 
                 SectionTitle("Text size")
@@ -75,11 +108,11 @@ private fun SectionTitle(text: String) {
 }
 
 @Composable
-private fun ChoiceRow(label: String, selected: Boolean, onClick: () -> Unit) {
+private fun ChoiceRow(label: String, selected: Boolean, modifier: Modifier = Modifier.fillMaxWidth(), onClick: () -> Unit) {
     Text(
         text = (if (selected) "\u2713  " else "     ") + label,
         color = if (selected) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.onSurface,
-        modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(vertical = 8.dp),
+        modifier = modifier.clickable(onClick = onClick).padding(vertical = 8.dp),
     )
 }
 

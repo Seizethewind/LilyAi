@@ -24,7 +24,8 @@ fun tabSizeLabel(size: Int): String = when {
 /**
  * Everything the user can change about how the editor looks and behaves. Font size is kept separately.
  * [theme] is the id of an editor theme. [tabSize] is 0 to follow each file's own indent, -1 for tab characters,
- * or the number of spaces. [autoSave] saves files a few seconds after you stop typing.
+ * or the number of spaces. [autoSave] saves files a few seconds after you stop typing. [font] is a [FontChoice] id: one of the
+ * phone's fonts or a font file the person added.
  */
 data class EditorSettings(
     val theme: String = "dracula",
@@ -34,6 +35,7 @@ data class EditorSettings(
     val lineNumbers: Boolean = true,
     val autoPair: Boolean = true,
     val autoSave: Boolean = false,
+    val font: String = FontChoice.DEFAULT_ID,
 ) {
     /** The text one Tab or one level of auto-indent inserts. [detected] is what the file itself uses. */
     fun indentFor(detected: String): String = when {
