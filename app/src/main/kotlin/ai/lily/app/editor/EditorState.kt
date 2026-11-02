@@ -2,6 +2,10 @@ package ai.lily.app.editor
 
 import ai.lily.app.lib.editor.DraftStore
 import ai.lily.app.lib.editor.FindOptions
+import ai.lily.app.lib.editor.FontChoice
+import ai.lily.app.lib.editor.FontImport
+import ai.lily.app.lib.editor.FontStore
+import ai.lily.app.lib.editor.LargeFileReader
 import ai.lily.app.lib.editor.Lang
 import ai.lily.app.lib.editor.ProjectSearchResult
 import ai.lily.app.lib.editor.UndoHistory
@@ -11,6 +15,7 @@ import ai.lily.app.lib.editor.deleteLines
 import ai.lily.app.lib.editor.detectIndent
 import ai.lily.app.lib.editor.duplicateLines
 import ai.lily.app.lib.editor.findMatches
+import ai.lily.app.lib.editor.formatBytes
 import ai.lily.app.lib.editor.gotoLine
 import ai.lily.app.lib.editor.insertAt
 import ai.lily.app.lib.editor.languageFor
@@ -25,14 +30,21 @@ import androidx.compose.runtime.mutableStateListOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.text.TextRange
+import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.TextFieldValue
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.withContext
 import java.io.File
 import java.io.IOException
+import java.io.InputStream
+import kotlin.coroutines.coroutineContext
 
-/** Files bigger than this are not opened. */
+/** Files bigger than this are not opened in the editor. They open in a read-only viewer instead (up to [MAX_VIEW_BYTES]). */
 const val MAX_FILE_BYTES = 1_000_000L
+
+/** The biggest file the read-only viewer will index. */
+const val MAX_VIEW_BYTES = 512L * 1024 * 1024
 
 /** Files with more characters than this open without syntax colours so typing stays smooth. */
 const val MAX_HIGHLIGHT_CHARS = 150_000
@@ -68,11 +80,15 @@ class EditorTab(val path: String, text: String) {
     }
 }
 
-/** Everything the editor screen shows: open tabs, settings, the find bar and status messages. */
+/**
+ * Everything the editor screen shows: open tabs, settings, the find bar and status messages. [fonts] holds the font files the person
+ * added; by default it is a `fonts` folder next to the workspace.
+ */
 class EditorState(
     val root: File,
     private val drafts: DraftStore,
     private val prefs: EditorPrefs,
+    val fonts: FontStore = FontStore(File(root.canonicalFile.parentFile ?: root, "fonts")),
 ) {
     val tabs = mutableStateListOf<EditorTab>()
     var active by mutableStateOf(0)
@@ -83,6 +99,17 @@ class EditorState(
     var fontSize by mutableStateOf(prefs.fontSize)
         private set
     var preview by mutableStateOf(PreviewMode.OFF)
+
+    /** A file over 1 MB that is open in the read-only viewer, or null. */
+    var largeFile by mutableStateOf<LargeFileSession?>(null)
+
+    /** Set by the activity: opens the phone's file picker so the person can add a font file. */
+    var importFont: (() -> Unit)? = null
+
+    /** Goes up whenever a font file is added or removed, so screens that list fonts look again. */
+    var fontsVersion by mutableStateOf(0)
+        private set
+    private var fontCache: Pair<String, FontFamily>? = null
 
     var findQuery by mutableStateOf("")
     var replaceText by mutableStateOf("")
@@ -96,7 +123,7 @@ class EditorState(
     val current: EditorTab? get() = tabs.getOrNull(active)
     val theme: EditorTheme get() = editorThemeById(settings.theme)
 
-    // ---- Settings and preview ----
+    // ---- Settings, fonts and preview ----
 
     fun updateSettings(s: ai.lily.app.lib.editor.EditorSettings) {
         settings = s
@@ -106,6 +133,51 @@ class EditorState(
     fun updateFontSize(size: Int) {
         fontSize = size.coerceIn(EditorPrefs.MIN_FONT, EditorPrefs.MAX_FONT)
         prefs.fontSize = fontSize
+    }
+
+    /** The family code is drawn in. A font file that is missing or damaged gives monospace instead of an error. */
+    val fontFamily: FontFamily
+        get() {
+            val key = "${settings.font}#$fontsVersion"
+            fontCache?.let { if (it.first == key) return it.second }
+            val family = EditorFonts.familyFor(FontChoice.parse(settings.font), fonts) ?: FontFamily.Monospace
+            fontCache = key to family
+            return family
+        }
+
+    /** A sentence if the chosen font is a file that cannot be used, otherwise null. */
+    val fontProblem: String?
+        get() {
+            if (fontsVersion < 0) return null
+            val choice = FontChoice.parse(settings.font)
+            if (choice !is FontChoice.Custom) return null
+            return if (EditorFonts.familyFor(choice, fonts) == null) {
+                "The font file ${choice.fileName} is missing or cannot be read, so Monospace is used."
+            } else {
+                null
+            }
+        }
+
+    /** Adds the font file in [input] (picked as [displayName]) and, if it is a font, switches to it. Closes [input]. */
+    suspend fun installFont(displayName: String, input: InputStream) {
+        val result = withContext(Dispatchers.IO) { input.use { fonts.import(displayName, it) } }
+        when (result) {
+            is FontImport.Imported -> {
+                fontsVersion++
+                updateSettings(settings.copy(font = FontChoice.Custom(result.name).id))
+                message = "Added the font ${result.name} and switched to it"
+            }
+
+            is FontImport.Rejected -> message = result.reason
+        }
+    }
+
+    /** Deletes an added font file. If it was the chosen font the editor goes back to monospace. */
+    fun removeFont(name: String) {
+        if (!fonts.delete(name)) return
+        fontsVersion++
+        if (settings.font == FontChoice.Custom(name).id) updateSettings(settings.copy(font = FontChoice.DEFAULT_ID))
+        message = "Removed the font $name"
     }
 
     /** Off, then half the screen, then the whole screen, then off again. */
@@ -153,6 +225,10 @@ class EditorState(
             active = existing
             return
         }
+        if (f.isFile && f.length() > MAX_FILE_BYTES) {
+            openLarge(key, f)
+            return
+        }
         val result = withContext(Dispatchers.IO) {
             runCatching {
                 when {
@@ -172,6 +248,34 @@ class EditorState(
         }
     }
 
+    /**
+     * Opens a file over 1 MB in the read-only viewer. The file is read once, in pieces, to count its lines; it is never held in
+     * memory. Leaving the screen while this runs stops it.
+     */
+    private suspend fun openLarge(key: String, f: File) {
+        val size = f.length()
+        if (size > MAX_VIEW_BYTES) {
+            message = "$key is ${formatBytes(size)}, which is too big to view here (the limit is ${formatBytes(MAX_VIEW_BYTES)})."
+            return
+        }
+        message = "Reading ${f.name} (${formatBytes(size)}) to count its lines\u2026"
+        val job = coroutineContext[Job]
+        val reader = LargeFileReader(f)
+        val outcome = withContext(Dispatchers.IO) { runCatching { reader.buildIndex(cancelled = { job?.isActive == false }) } }
+        val finished = outcome.getOrElse {
+            message = "Could not open $key: ${it.message}"
+            return
+        }
+        if (!finished) {
+            message = null
+            return
+        }
+        val session = LargeFileSession(key, size, reader)
+        session.load(0)
+        largeFile = session
+        message = "$key is over 1 MB, so it is open for reading only."
+    }
+
     /** Brings back unsaved typing from an earlier session, if it was typed on top of the text that is on disk now. */
     private fun restoreDraft(tab: EditorTab) {
         val draft = runCatching { drafts.load(tab.path) }.getOrNull() ?: return
@@ -181,6 +285,7 @@ class EditorState(
                 tab.restore(draft.text)
                 message = "Restored unsaved typing in ${tab.name}"
             }
+
             else -> {
                 runCatching { drafts.delete(tab.path) }
                 message = "Dropped an old draft of ${tab.name} because the file changed"
@@ -191,6 +296,11 @@ class EditorState(
     /** Opens [rel] and selects the match at 1 based [line] and [column], [length] characters long. */
     suspend fun openAt(rel: String, line: Int, column: Int, length: Int) {
         open(rel)
+        val big = largeFile
+        if (big != null && big.path == rel) {
+            big.goToLine(line)
+            return
+        }
         val tab = tabs.firstOrNull { it.path == rel } ?: return
         val text = tab.value.text
         var pos = 0

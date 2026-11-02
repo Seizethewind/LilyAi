@@ -55,7 +55,6 @@ import androidx.compose.ui.input.key.onPreviewKeyEvent
 import androidx.compose.ui.input.key.type
 import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.TextStyle
-import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardCapitalization
 import androidx.compose.ui.text.input.OffsetMapping
 import androidx.compose.ui.text.input.TransformedText
@@ -444,7 +443,7 @@ private fun CodeArea(tab: EditorTab, state: EditorState, modifier: Modifier) {
         if (big) VisualTransformation.None else HighlightTransformation(tab.lang, theme)
     }
     val codeStyle = TextStyle(
-        fontFamily = FontFamily.Monospace,
+        fontFamily = state.fontFamily,
         fontSize = state.fontSize.sp,
         lineHeight = (state.fontSize * settings.spacing.factor).sp,
         color = theme.foreground,

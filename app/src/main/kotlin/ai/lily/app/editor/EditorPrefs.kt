@@ -24,6 +24,7 @@ class EditorPrefs(context: Context) {
             lineNumbers = sp.getBoolean("lineNumbers", d.lineNumbers),
             autoPair = sp.getBoolean("autoPair", d.autoPair),
             autoSave = sp.getBoolean("autoSave", d.autoSave),
+            font = sp.getString("font", d.font) ?: d.font,
         )
     }
 
@@ -36,6 +37,7 @@ class EditorPrefs(context: Context) {
             .putBoolean("lineNumbers", s.lineNumbers)
             .putBoolean("autoPair", s.autoPair)
             .putBoolean("autoSave", s.autoSave)
+            .putString("font", s.font)
             .apply()
     }
 
