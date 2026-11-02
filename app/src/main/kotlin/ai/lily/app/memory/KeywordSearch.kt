@@ -18,6 +18,9 @@ data class SearchHit(
 /**
  * Keyword search over the chunks of the library, or of one notebook's sources.
  *
+ * With a notebook, only sources at the FULL context level in that notebook are searched (see [ContextLevel]); without one, the
+ * whole library is searched and levels are ignored.
+ *
  * It does not need the database to support full-text search. The database narrows the chunks down to those that contain any
  * of the words as text (a plain `LIKE`), and the app ranks them with BM25 on whole words. So a chunk only counts for a word it
  * really contains: "past" does not find "pasta".
@@ -39,7 +42,11 @@ class KeywordSearch(private val db: SqlDatabase) {
         schema.ensure()
 
         val like = terms.map { "%$it%" }
-        val join = if (notebookId == null) "" else " JOIN notebook_sources ns ON ns.source_id = c.source_id AND ns.notebook_id = ?"
+        val join = if (notebookId == null) {
+            ""
+        } else {
+            " JOIN notebook_sources ns ON ns.source_id = c.source_id AND ns.notebook_id = ? AND ${KnowledgeSchema.ONLY_FULL_CONTEXT}"
+        }
         val scope = if (notebookId == null) emptyList() else listOf(notebookId)
 
         // How many chunks there are, how long they are on average, and how many contain each word.
