@@ -1,0 +1,78 @@
+# Plugins (phase 13)
+
+A small extension system. Termux is the first plugin and is **not built in**: the app has no Termux code, and nothing Termux-related is active until you install the plugin, turn it on and allow it.
+
+This phase is the logic, the Android adapter and their tests. It has no screen yet (see "Not done"), so until the screen exists every command a plugin tries to run is refused.
+
+## What a plugin is
+
+One JSON manifest. **The app never loads or runs code from a plugin.** A manifest can contribute:
+
+- **tools** that the workers can call (this is what Termux uses),
+- **prompt commands** (a saved prompt with `{selection}`, `{file}`, `{language}`),
+- **snippets** (prefix and body).
+
+Prompt commands and snippets are read, checked and stored, but nothing in the editor uses them yet. Themes and fonts are not part of this phase.
+
+## Why Termux can be a plugin
+
+The app offers one generic ability, `ServiceBridge`: start a service in another installed app with extras the plugin names, and optionally wait for the answer. Which app, class, action, extras and answer keys is all in the manifest, so `app/src/main/assets/plugins/termux.json` is the only place that mentions Termux. The old `TerminalTool` (an unfinished stub that no worker called) is removed and `LilyFactory` no longer registers it.
+
+Three things stay in the app because Android needs them at build time. They are inert without the plugin:
+
+- `uses-permission com.termux.permission.RUN_COMMAND` in `AndroidManifest.xml`,
+- the `<queries>` entry for `com.termux` (Android 11+ hides other apps otherwise); a plugin for some other app needs its own `<queries>` entry,
+- the unexported `PluginResultReceiver`.
+
+## Manifest
+
+| Field | Rule |
+|---|---|
+| `schema` | must be `1` |
+| `id` | 3 to 64 characters: lowercase letters, digits, dots, hyphens |
+| `name`, `description` | one line, no hidden or direction-changing characters |
+| `version` | `1.2.3` |
+| `permissions` | `external-app:<package>`; packages of Lily itself and of Android (`android.*`, `com.android.*`) are refused |
+| `tools[]` | `name`, `description`, `params[]` (`name`, `description`, `required`, `maxLength`), `action` |
+| `tools[].action` | `kind` must be `android-service`; `package` (must be in `permissions`), `class`, `intentAction`, `extras`, optional `result`, `timeoutMs` (1 to 300 seconds) |
+| `extras` values | text, text list, true/false or a whole number. Text may contain `{param}`; an unknown `{name}` is an error |
+| `result` | `pendingIntentExtra`, `bundleExtra`, `outputKey`, and optionally `errorOutputKey`, `exitCodeKey`, `errorCodeKey`, `errorCodeOk`, `errorMessageKey`. Leave it out for fire and forget |
+
+Limits: 64 KB per manifest, 20 tools, 8 params per tool, 20 extras per action. Anything not understood is an error, and every error is listed.
+
+## What keeps you in charge
+
+- A new plugin is **off and has nothing allowed**. A plugin asks; only you allow.
+- An update **never adds** an allowance and drops ones it no longer asks for. "Don't ask again" for a tool survives an update only if that tool is exactly the same and still allowed.
+- Every call **checks again**: plugin on, permission allowed, arguments valid. Turning a plugin off, taking a permission back or updating it works immediately, even for tools already handed to the workers.
+- **Each run is shown to you first** with every value that will be sent. Hidden and text-direction characters are shown as `\uXXXX`, so what you read is what runs. "Don't ask again" is your choice per tool; a manifest cannot set it. With no confirmation screen, the default gate denies everything.
+- Arguments are strict: unknown names are refused, each has a length limit, and a null character is refused. `{param}` values are filled in one pass, so a value that looks like a placeholder stays literal. An optional value that was not given leaves its extra out instead of sending it blank.
+- A plugin can never replace one of the app's own tools: a name already taken is skipped.
+- Output is capped at 16,000 characters per stream; the end is kept because that is where errors are.
+- Plugin files are checked again every time they load. A damaged, oversized, renamed or invalid file is skipped (listed in `DiskPluginStore.problems`) and the others still load. Stored allowances are cut down to what the manifest asks for.
+
+## Termux plugin: what to set up on the phone
+
+1. Install Termux from F-Droid or GitHub (the old Play Store build is out of date).
+2. In Termux add `allow-external-apps=true` to `~/.termux/termux.properties`, then restart Termux.
+3. Android Settings, Apps, Lily, Permissions, Additional permissions: allow **Run commands in Termux environment**.
+4. Keep Lily open on screen while a command runs. Android refuses to start another app's service from the background; Lily reports that clearly.
+
+The plugin runs commands as background commands (`bash -c`), which is what gives separate stdout, stderr and an exit code. Termux itself cuts results to about 100 KB from the start. The answer travels in a `PendingIntent`, which **must be mutable** (Termux adds the result to it); an immutable one comes back with no result.
+
+## Not verified
+
+- **Nothing here was compiled or run.** There is no Gradle build in my sandbox: run `./gradlew testDebugUnitTest`.
+- The Termux docs confirm the service class, the action, the `PATH`, `ARGUMENTS`, `WORKDIR` and `BACKGROUND` extras, `RUN_COMMAND_PENDING_INTENT`, and the result keys `err` and `errmsg`. They did **not** give the literal names of the result bundle (`result`) and of `stdout`, `stderr`, `exitCode`; I used the values I remember from Termux's source. They are in the manifest, so if the first real run returns "answered without a result" or an empty output, fix them in `termux.json` and reinstall: no code change.
+
+## Not done
+
+- **The screen**: install from the bundled file or a pasted manifest, list plugins (with `DiskPluginStore.problems`), turn on and off, allow and take back permissions, the "approve this command" dialog, the "don't ask again" switch.
+- **Wiring**: create `PluginHost(PluginRegistry(DiskPluginStore(filesDir/plugins)), AndroidServiceBridge(context), gate)` and pass it to `LilyFactory.create(plugins = ...)`. The hook exists; nothing calls it yet. Plugin tools appear the next time Lily is created.
+- `Tool` has only a name, so a tool's description and params are not yet given to the planner; until they are, the model only knows a tool exists by name.
+- Install from a URL, signing and updates from a store. A manifest is installed from text.
+- Prompt commands and snippets have no place in the editor yet.
+
+## Tests
+
+`app/src/test/kotlin/ai/lily/app/plugins/`: the manifest parser (including the bundled Termux manifest and every rejection rule), the registry and stores (install, update rules, revoking, damaged and hand-edited files), and plugin tools against a fake bridge and fake gate (asking, denying, re-checking on every call, argument and placeholder rules, output, failures, registering).

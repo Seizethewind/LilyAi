@@ -2,9 +2,12 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Used only by the optional Termux plugin (assets/plugins/termux.json). Android needs this declared at build
+         time; it does nothing unless that plugin is installed, turned on and allowed. -->
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
 
     <queries>
+        <!-- Lets Lily see Termux (Android 11+ hides other apps). Another plugin's target app needs its own entry. -->
         <package android:name="com.termux" />
     </queries>
 
@@ -31,6 +34,10 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|uiMode"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
+        <!-- Receives the answer a plugin's target app sends back. Not exported: only Lily's own PendingIntent reaches it. -->
+        <receiver
+            android:name=".plugins.PluginResultReceiver"
+            android:exported="false" />
     </application>
 
 </manifest>

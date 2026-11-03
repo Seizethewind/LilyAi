@@ -1,0 +1,51 @@
+{
+  "schema": 1,
+  "id": "lily.termux",
+  "name": "Termux",
+  "version": "1.0.0",
+  "description": "Lets Lily run shell commands in Termux. Each command is shown to you first and runs only if you approve it.",
+  "permissions": ["external-app:com.termux"],
+  "tools": [
+    {
+      "name": "terminal",
+      "description": "Run a shell command line in Termux with bash -c and return its exit code, stdout and stderr.",
+      "params": [
+        {
+          "name": "command",
+          "description": "The shell command line to run.",
+          "required": true,
+          "maxLength": 4000
+        },
+        {
+          "name": "workdir",
+          "description": "Folder inside Termux to run it in. Termux home when left out.",
+          "required": false,
+          "maxLength": 300
+        }
+      ],
+      "action": {
+        "kind": "android-service",
+        "package": "com.termux",
+        "class": "com.termux.app.RunCommandService",
+        "intentAction": "com.termux.RUN_COMMAND",
+        "extras": {
+          "com.termux.RUN_COMMAND_PATH": "/data/data/com.termux/files/usr/bin/bash",
+          "com.termux.RUN_COMMAND_ARGUMENTS": ["-c", "{command}"],
+          "com.termux.RUN_COMMAND_WORKDIR": "{workdir}",
+          "com.termux.RUN_COMMAND_BACKGROUND": true
+        },
+        "result": {
+          "pendingIntentExtra": "com.termux.RUN_COMMAND_PENDING_INTENT",
+          "bundleExtra": "result",
+          "outputKey": "stdout",
+          "errorOutputKey": "stderr",
+          "exitCodeKey": "exitCode",
+          "errorCodeKey": "err",
+          "errorCodeOk": -1,
+          "errorMessageKey": "errmsg"
+        },
+        "timeoutMs": 120000
+      }
+    }
+  ]
+}

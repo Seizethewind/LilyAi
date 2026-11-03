@@ -11,11 +11,11 @@ import ai.lily.app.gateway.RouterModelGateway
 import ai.lily.app.memory.TursoClient
 import ai.lily.app.memory.TursoJournal
 import ai.lily.app.memory.TursoProvenFacts
+import ai.lily.app.plugins.PluginHost
 import ai.lily.app.sandbox.PandaStackClient
 import ai.lily.app.settings.AppSettings
 import ai.lily.app.tools.EditorBridge
 import ai.lily.app.tools.SandboxTool
-import ai.lily.app.tools.TerminalTool
 import ai.lily.app.tools.ToolSystem
 import ai.lily.app.tools.WebSearchTool
 import ai.lily.app.workers.BuildWorker
@@ -31,14 +31,21 @@ object LilyFactory {
     /**
      * [editor] is how the coding and file workers see and change the files open in the code editor. Without it they only answer.
      * [workspaceRoot] is the project folder; with it the coding worker can find relevant files beyond the open tabs.
+     * [plugins] adds the tools of every plugin that is on and allowed (for example the optional Termux plugin). The app's
+     * own tools are registered first, so a plugin can never replace one of them.
      */
-    fun create(settings: AppSettings, editor: EditorBridge? = null, workspaceRoot: File? = null): Lily {
+    fun create(
+        settings: AppSettings,
+        editor: EditorBridge? = null,
+        workspaceRoot: File? = null,
+        plugins: PluginHost? = null,
+    ): Lily {
         val gateway = RouterModelGateway(settings.router)
 
         val tools = ToolSystem().apply {
-            register(TerminalTool())
             register(WebSearchTool(gateway, settings.router.webSearchModel))
             settings.pandastack?.let { register(SandboxTool(PandaStackClient(it))) }
+            plugins?.registerInto(this)
         }
 
         val workspace = workspaceRoot?.let { WorkspaceIndex(DiskCodeFiles(it)) }
