@@ -1,7 +1,7 @@
 # Roadmap: Acode leftovers + the knowledge layer
 
 Final plan, 13 phases. Each phase is one small pull request that builds on its own and leaves `main` working.
-Done so far: editor core, navigation, preview and settings, and the agent bridge (see `docs/code-editor.md`, `docs/agent-editor.md`), then phases 1 to 7 below on `main` (see `docs/editor-files.md`, `docs/knowledge-groundwork.md`, `docs/knowledge-data-model.md`, `docs/knowledge-search.md`, `docs/knowledge-embeddings.md`, `docs/knowledge-ask.md`, `docs/workspace-index.md`). Phase 8 (`docs/editor-fonts-large-files.md`) and phase 9 (`docs/knowledge-context.md`) are written on their own branches and wait for review and merge. None of the knowledge phases has a screen yet.
+Done so far: editor core, navigation, preview and settings, and the agent bridge (see `docs/code-editor.md`, `docs/agent-editor.md`), then phases 1 to 10 below on `main` (see `docs/editor-files.md`, `docs/knowledge-groundwork.md`, `docs/knowledge-data-model.md`, `docs/knowledge-search.md`, `docs/knowledge-embeddings.md`, `docs/knowledge-ask.md`, `docs/workspace-index.md`, `docs/editor-fonts-large-files.md`, `docs/knowledge-context.md`, `docs/sandbox-verify.md`). Phase 11 (`docs/research-mode.md`) is written on `feat/research-mode` and waits for review and merge. None of the knowledge phases has a screen yet.
 
 ## Rules for every phase
 
@@ -24,7 +24,7 @@ Done so far: editor core, navigation, preview and settings, and the agent bridge
 | 8 | Editor | Fonts and large files | Font choice; files over 1 MB open without loading everything |
 | 9 | Knowledge | Context levels, chat, insights | Per source: off, insights only or full text, saved; token estimate; saved prompts such as Summary and Key claims |
 | 10 | Both | Verify in the sandbox | After an accepted change, run the project's checks in the sandbox and report |
-| 11 | Knowledge | Research mode | The research worker searches the web, saves sources, takes notes and writes a cited report |
+| 11 | Knowledge | Research mode | Plan searches, read pages through a safe fetcher, save them as web sources, and write a cited report saved as an AI note (`docs/research-mode.md`) |
 | 12 | Editor | Remote workspaces | SFTP and FTP |
 | 13 | Editor | Plugins | A small extension system |
 
@@ -38,4 +38,6 @@ Podcasts, speech to text and text to speech, a web UI and REST API, Docker and S
 - Whether Turso supports full-text search. Phase 4 keyword search does not need it (it ranks in the app), so a database-side path would only be an optimisation; the Check button's answer is still unrecorded.
 - Whether the person's real Turso database accepts the SQL from phases 3, 4 and 9 (`CHECK` constraints, a partial unique index, `ON CONFLICT ... DO UPDATE`, multi-row `INSERT`, `INSERT ... SELECT ... WHERE EXISTS ... ON CONFLICT`). It will say so the first time the knowledge migrations and indexing run on it.
 - Whether Turso's HTTP API accepts the size of a request that indexes a large source (about 1 MB for a 1 MB source). If not, indexing needs to write in several transactions.
-- Whether to add screens for the knowledge layer (notebooks, sources, context levels, ask, chat) before phase 10; none exists yet.
+- Whether to add screens for the knowledge layer (notebooks, sources, context levels, ask, chat, research) before phase 12; none exists yet.
+- Settings for the embedding endpoint, so the knowledge layer and research mode can be wired in `LilyFactory`.
+- Whether the router's search model returns usable web addresses (phase 11 depends on it), and whether to add a transport that connects to the address the guard checked (closes DNS rebinding).
