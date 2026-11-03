@@ -40,10 +40,14 @@ Configured in the app (Settings), never in Git.
 
 See `docs/memory.md`.
 
+## Plugins
+
+Extensions are a JSON manifest only; the app never runs plugin code. A plugin is off and has nothing allowed until the person turns it on and allows each permission, and every tool call is re-checked and shown to the person first. Plugin tools join the Tool System after the app's own tools and can never replace one. See `docs/plugins.md`.
+
 ## External services
 
 - **Router (FreeLLMAPI)** — models and web search, via the Model Gateway. See `docs/router.md`.
 - **Pandastack** — sandboxed test runs, via `SandboxTool`. See `docs/pandastack.md`.
-- **Termux** — external terminal, via `TerminalTool`.
+- **Termux** — external terminal, as an optional plugin (`assets/plugins/termux.json`), not built in. See `docs/plugins.md`.
 - **Turso** — cloud memory over its HTTP API.
 - **GitHub Actions** — builds and releases (`.github/workflows`).

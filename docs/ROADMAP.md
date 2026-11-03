@@ -1,7 +1,7 @@
 # Roadmap: Acode leftovers + the knowledge layer
 
 Final plan, 13 phases. Each phase is one small pull request that builds on its own and leaves `main` working.
-Done so far: editor core, navigation, preview and settings, and the agent bridge (see `docs/code-editor.md`, `docs/agent-editor.md`), then phases 1 to 7 below on `main` (see `docs/editor-files.md`, `docs/knowledge-groundwork.md`, `docs/knowledge-data-model.md`, `docs/knowledge-search.md`, `docs/knowledge-embeddings.md`, `docs/knowledge-ask.md`, `docs/workspace-index.md`). Phase 8 (`docs/editor-fonts-large-files.md`) and phase 9 (`docs/knowledge-context.md`) are written on their own branches and wait for review and merge. Phase 12 (`docs/remote-workspaces.md`) is written on `feat/remote-workspaces` and waits for review. None of the knowledge phases has a screen yet.
+Done so far: editor core, navigation, preview and settings, and the agent bridge (see `docs/code-editor.md`, `docs/agent-editor.md`), then phases 1 to 12 below, whose code and docs are on `main` (`docs/editor-files.md`, `docs/knowledge-groundwork.md`, `docs/knowledge-data-model.md`, `docs/knowledge-search.md`, `docs/knowledge-embeddings.md`, `docs/knowledge-ask.md`, `docs/workspace-index.md`, `docs/editor-fonts-large-files.md`, `docs/knowledge-context.md`, `docs/sandbox-verify.md`, `docs/research-mode.md`, `docs/remote-workspaces.md`). Phase 13 (`docs/plugins.md`) is written on `feat/plugins` and waits for review. Earlier versions of this paragraph listed some phases as waiting on branches; that was out of date. Whether each phase has been built and its tests run is tracked in the project memory, not here: the sandbox where they were written has no Gradle build. None of the knowledge phases has a screen yet, and neither do plugins or remote workspaces.
 
 ## Rules for every phase
 
@@ -26,11 +26,11 @@ Done so far: editor core, navigation, preview and settings, and the agent bridge
 | 10 | Both | Verify in the sandbox | After an accepted change, run the project's checks in the sandbox and report |
 | 11 | Knowledge | Research mode | The research worker searches the web, saves sources, takes notes and writes a cited report |
 | 12 | Editor | Remote workspaces | SFTP first, FTPS next, plain FTP only as a last resort that the person is warned about every time. Local copy with pull, conflict-checked push, host key checking. Logic and tests only: no real client library and no screens yet (`docs/remote-workspaces.md`) |
-| 13 | Editor | Plugins | A small extension system |
+| 13 | Editor | Plugins | Declarative plugins: one JSON manifest, no plugin code ever runs. Tools, prompt commands and snippets, each needing the person's explicit permission. Termux is the first plugin and is not built in (`docs/plugins.md`). Logic, Android adapter and tests only: no screen yet |
 
 ## Left out on purpose
 
-Podcasts, speech to text and text to speech, a web UI and REST API, Docker and SurrealDB, a provider matrix (the router handles providers), multi-user and passwords. PDFs, audio and video come later through the sandbox, with the app storing only the extracted text.
+Podcasts, speech to text and text to speech, a web UI and REST API, Docker and SurrealDB, a provider matrix (the router handles providers), multi-user and passwords. PDFs, audio and video come later through the sandbox, with the app storing only the extracted text. Plugins that run their own code: a plugin can only ask the app to do something from a short, checked list.
 
 ## Open questions
 
@@ -40,3 +40,5 @@ Podcasts, speech to text and text to speech, a web UI and REST API, Docker and S
 - Whether Turso's HTTP API accepts the size of a request that indexes a large source (about 1 MB for a 1 MB source). If not, indexing needs to write in several transactions.
 - Whether to add screens for the knowledge layer (notebooks, sources, context levels, ask, chat) before phase 10; none exists yet.
 - Which SSH and FTP libraries to add for phase 12 (the real SFTP, FTPS and FTP clients).
+- The literal result-bundle key names Termux uses (`result`, `stdout`, `stderr`, `exitCode`); they live in `termux.json` and are unconfirmed (`docs/plugins.md`).
+- The plugin screen: install, turn on, allow, and the approve-this-command dialog. Until it exists, plugin tools are refused.

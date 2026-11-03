@@ -40,27 +40,35 @@ class AndroidServiceBridge(context: Context) : ServiceBridge {
 
         val spec = call.result
         val requestId = PluginResults.newId()
-        val waiting = if (spec == null) null else {
+        var waiting: CompletableDeferred<Intent>? = null
+        if (spec != null) {
             val back = Intent(app, PluginResultReceiver::class.java).putExtra(EXTRA_REQUEST_ID, requestId)
             val mutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
-            intent.putExtra(
-                spec.pendingIntentExtra,
-                PendingIntent.getBroadcast(app, requestId, back, PendingIntent.FLAG_ONE_SHOT or mutable),
-            )
-            PluginResults.expect(requestId)
+            val pending = PendingIntent.getBroadcast(app, requestId, back, PendingIntent.FLAG_ONE_SHOT or mutable)
+            intent.putExtra(spec.pendingIntentExtra, pending)
+            waiting = PluginResults.expect(requestId)
         }
 
         try {
             if (app.startService(intent) == null) {
                 PluginResults.drop(requestId)
-                return ServiceReply.Failed(FailReason.ERROR, "${call.packageName} has no service ${call.className}; check that the app is up to date and allows other apps")
+                return ServiceReply.Failed(
+                    FailReason.ERROR,
+                    "${call.packageName} has no service ${call.className}; check that the app is up to date and allows other apps",
+                )
             }
         } catch (e: SecurityException) {
             PluginResults.drop(requestId)
-            return ServiceReply.Failed(FailReason.NOT_ALLOWED, "Android refused the call: ${e.message}. The permission the app asks for may not be granted to Lily in Android settings.")
+            return ServiceReply.Failed(
+                FailReason.NOT_ALLOWED,
+                "Android refused the call: ${e.message}. The permission the app asks for may not be granted to Lily in Android settings.",
+            )
         } catch (e: IllegalStateException) {
             PluginResults.drop(requestId)
-            return ServiceReply.Failed(FailReason.NOT_ALLOWED, "Android does not let Lily start another app while Lily is in the background. Keep Lily open on screen and try again.")
+            return ServiceReply.Failed(
+                FailReason.NOT_ALLOWED,
+                "Android does not let Lily start another app while Lily is in the background. Keep Lily open on screen and try again.",
+            )
         } catch (e: Exception) {
             PluginResults.drop(requestId)
             return ServiceReply.Failed(FailReason.ERROR, e.message ?: e.javaClass.simpleName)
@@ -68,11 +76,15 @@ class AndroidServiceBridge(context: Context) : ServiceBridge {
 
         if (spec == null || waiting == null) return ServiceReply.Sent
 
-        val answer = try {
-            withTimeoutOrNull(call.timeoutMs) { waiting.await() }
+        val answer: Intent?
+        try {
+            answer = withTimeoutOrNull(call.timeoutMs) { waiting.await() }
         } finally {
             PluginResults.drop(requestId)
-        } ?: return ServiceReply.Failed(FailReason.TIMEOUT, "no answer within ${call.timeoutMs / 1000} seconds; the command may still be running")
+        }
+        if (answer == null) {
+            return ServiceReply.Failed(FailReason.TIMEOUT, "no answer within ${call.timeoutMs / 1000} seconds; the command may still be running")
+        }
 
         val bundle = answer.getBundleExtra(spec.bundleExtra)
             ?: return ServiceReply.Failed(FailReason.ERROR, "the app answered without a result (${spec.bundleExtra})")
