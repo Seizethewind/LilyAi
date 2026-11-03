@@ -65,6 +65,10 @@ dependencies {
     implementation(libs.androidx.compose.material3)
     implementation(libs.androidx.activity.compose)
 
+    // Remote workspaces. SFTP: the maintained JSch fork (modern algorithms, weak ones off by default). FTPS/FTP: Apache Commons Net.
+    implementation("com.github.mwiede:jsch:0.2.20")
+    implementation("commons-net:commons-net:3.11.1")
+
     testImplementation(libs.junit)
     // Android's org.json is only a stub in unit tests; this real one lets the Turso request/response JSON be tested.
     testImplementation("org.json:json:20240303")

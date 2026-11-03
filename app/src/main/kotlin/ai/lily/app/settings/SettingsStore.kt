@@ -3,6 +3,7 @@ package ai.lily.app.settings
 import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
+import ai.lily.app.gateway.EmbeddingEndpoint
 import ai.lily.app.gateway.RouterConfig
 import ai.lily.app.memory.TursoConfig
 import ai.lily.app.sandbox.PandaStackConfig
@@ -47,6 +48,20 @@ class EncryptedSettingsStore(context: Context) : SettingsStore {
             },
             knowledgeDb = get("knowledge_url").takeIf { it.isNotBlank() }
                 ?.let { TursoConfig(it, get("knowledge_token")) },
+            // A saved value that no longer passes the endpoint's own checks (for example a blank model) counts as not set.
+            embedding = get("embed_url").takeIf { it.isNotBlank() }?.let { url ->
+                val model = get("embed_model")
+                runCatching {
+                    EmbeddingEndpoint(
+                        name = "embedding",
+                        baseUrl = url,
+                        apiKey = get("embed_key"),
+                        model = model,
+                        tag = get("embed_tag").ifBlank { EmbeddingEndpoint.defaultTag(model, null) },
+                    )
+                }.getOrNull()
+            },
+            verifyCommands = get("verify_commands").lines().map { it.trim() }.filter { it.isNotEmpty() },
         )
     }
 
@@ -65,6 +80,11 @@ class EncryptedSettingsStore(context: Context) : SettingsStore {
             .putString("panda_url", settings.pandastack?.apiUrl.orEmpty())
             .putString("panda_key", settings.pandastack?.apiKey.orEmpty())
             .putString("panda_template", settings.pandastack?.template.orEmpty())
+            .putString("embed_url", settings.embedding?.baseUrl.orEmpty())
+            .putString("embed_key", settings.embedding?.apiKey.orEmpty())
+            .putString("embed_model", settings.embedding?.model.orEmpty())
+            .putString("embed_tag", settings.embedding?.tag.orEmpty())
+            .putString("verify_commands", settings.verifyCommands.joinToString("\n"))
             .apply()
     }
 }

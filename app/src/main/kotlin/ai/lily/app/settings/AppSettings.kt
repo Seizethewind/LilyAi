@@ -1,5 +1,6 @@
 package ai.lily.app.settings
 
+import ai.lily.app.gateway.EmbeddingEndpoint
 import ai.lily.app.gateway.RouterConfig
 import ai.lily.app.memory.TursoConfig
 import ai.lily.app.sandbox.PandaStackConfig
@@ -12,4 +13,8 @@ data class AppSettings(
     val pandastack: PandaStackConfig? = null,
     /** A third database for the knowledge layer. Never the same as [factsDb] or [journalDb]. */
     val knowledgeDb: TursoConfig? = null,
+    /** The service that turns library text into meaning vectors. Without it, search stays keyword only. */
+    val embedding: EmbeddingEndpoint? = null,
+    /** Shell commands the sandbox check runs instead of the ones it detects. One command per entry; empty means detect. */
+    val verifyCommands: List<String> = emptyList(),
 )
