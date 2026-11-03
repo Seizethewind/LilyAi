@@ -1,12 +1,12 @@
 # Gap audit, phases 1 to 13 (2026-11-03)
 
-Built from each phase's own doc, the project memory, and a read of `main` (`LilyFactory`, `EditorActivity`, `AppSettings`, the folder listings, `.github/workflows/build.yml`). I did not read `SettingsActivity` or the worker files beyond what the docs say. Nothing was compiled or run.
+Built from each phase's own doc, the project memory, and a read of `main` (`LilyFactory`, `EditorActivity`, `AppSettings`, the folder listings, `.github/workflows/build.yml`). I did not read `SettingsActivity` or the worker files beyond what the docs say. Nothing was compiled or run. All 13 phases are on `main` as of this audit (phase 13 was merged while I was writing it).
 
 ## The main finding
 
 Phases 3, 4, 5, 6, 9, 10, 11, 12 and 13 are **logic and tests with no way in**. Only phases 1, 2 (settings), 7 and 8 reach the person. Concretely, on `main`:
 
-- `LilyFactory.create` builds the router gateway, `WebSearchTool`, `SandboxTool`, the workers, the workspace code index (phase 7) and Turso memory. It builds **none** of: the knowledge repository, indexer, embedder, hybrid search, asker, context builder, chat, research runner, sandbox verifier, remote mirror, plugin host.
+- `LilyFactory.create` builds the router gateway, `WebSearchTool`, `SandboxTool`, the workers, the workspace code index (phase 7) and Turso memory. It builds **none** of: the knowledge repository, indexer, embedder, hybrid search, asker, context builder, chat, research runner, sandbox verifier, remote mirror. It accepts a plugin host (phase 13) but nothing creates one.
 - `ResearchWorker` accepts a runner, but the factory never gives it one, so it behaves as before phase 11.
 - `EditorActivity` fixes the workspace to `filesDir/workspace`, so a remote workspace cannot be opened.
 - `AppSettings` holds the router, journal, facts, Pandastack and knowledge databases. It has **no** embedding endpoint or tag, no check commands for verify, no remote profiles, no plugin state.
@@ -14,7 +14,7 @@ Phases 3, 4, 5, 6, 9, 10, 11, 12 and 13 are **logic and tests with no way in**. 
 
 ## Read first: is `main` green?
 
-`build.yml` runs `gradle assembleDebug testDebugUnitTest` on pushes to `main` and on pull requests. Docs for phases 4 to 11 each say "not compiled, expect small compile errors", and the project memory still lists phases 5 to 12 as "not merged" although their code is on `main`. I cannot read GitHub Actions. **Check the Actions tab for `main`.** If it is red, fixing it comes before everything else, because every later phase stacks on it. Note that a branch with no pull request is not built (the workflow has no branch trigger), so `feat/plugins` and `docs/gaps` are unbuilt until a PR is opened; I have no PR tool.
+`build.yml` runs `gradle assembleDebug testDebugUnitTest` on pushes to `main` and on pull requests. Docs for phases 4 to 13 each say "not compiled, expect small compile errors", and the project memory still lists phases 5 to 12 as "not merged" although their code is on `main`. I cannot read GitHub Actions. **Check the Actions tab for `main`, including the run for the phase 13 merge.** If it is red, fixing it comes before everything else, because every later phase stacks on it. A branch with no pull request is not built (the workflow has no branch trigger).
 
 ## Per phase
 
@@ -32,18 +32,17 @@ Phases 3, 4, 5, 6, 9, 10, 11, 12 and 13 are **logic and tests with no way in**. 
 | 10 | Verify in the sandbox | Check detection, secret-safe upload as base64 over exec, one-sandbox run, report. | **No button or hook** after Accept or Save, no settings field for custom commands. No retry of a failed fix, no recording a pass as a proven fact. Unproven: Pandastack accepts a 100,000-character exec, and the image has sh, base64, timeout and the toolchains. **This Android project itself cannot be verified there** (no SDK in the default template), so its Gradle check would fail. |
 | 11 | Research mode | Planner, model-based search, guarded fetch (SSRF rules, redirect checks, size caps), extractor, notebook, cited report. | **Not wired in `LilyFactory`** (needs knowledge database, embedder, tag). No screens, no PDFs, no per-source notes. **DNS rebinding is not closed** (the guard and the connection resolve separately). Hidden page text can still reach stored sources. The network path (`UrlConnectionTransport`, `SystemHostResolver`, `ModelSearchProvider`) has no test. Quality of addresses from the router's search model unknown. |
 | 12 | Remote workspaces | Protocol order (SFTP, then FTPS, plain FTP only as a warned last resort), host key policy, mirror with pull, conflict-checked push, path safety. | **No real SFTP, FTPS or FTP client**: it needs an SSH library and an FTP library with TLS (a decision for you). No screens (profile, password, host key dialog, FTP warning, banner, conflicts, pull and push). Host keys and profiles are not saved on disk. Save does not push. Rename, new folder, delete are not sent to the server. `EditorActivity` cannot switch workspace. |
-| 13 | Plugins | Manifest, strict parser, registry and stores, plugin tools with per-call checks, Android service bridge, bundled Termux manifest, tests. | **No screen** (install, on/off, allow, approve-this-command), and `PluginHost` is not created anywhere, so every plugin command is refused. Termux result-bundle key names are unconfirmed. `Tool` has only a name, so the planner never sees a plugin tool's description or params. Prompt commands and snippets are stored but unused. No themes, fonts, URL install or signing. Branch `feat/plugins` is unbuilt. |
+| 13 | Plugins | Manifest, strict parser, registry and stores, plugin tools with per-call checks, Android service bridge, bundled Termux manifest, tests. Merged to `main`; `TerminalTool` removed. | **No screen** (install, on/off, allow, approve-this-command), and `PluginHost` is not created anywhere, so every plugin command is refused. Termux result-bundle key names are unconfirmed. `Tool` has only a name, so the planner never sees a plugin tool's description or params. Prompt commands and snippets are stored but unused. No themes, fonts, URL install or signing. |
 
 ## Gaps that cut across phases
 
 1. **No composition root.** Several phases each say "the caller builds X from the same tag and settings". One place should build the knowledge stack, research runner, verifier, remote mirror and plugin host from settings, and hand them to `LilyFactory` and the screens.
-2. **Settings are incomplete** for phases 5, 10, 12 and 13 (see above), and the encrypted store has no home yet for host keys, remote profiles or plugin state beyond what phase 13 keeps in its own folder.
+2. **Settings are incomplete** for phases 5, 10, 12 and 13 (see above), and the encrypted store has no home yet for host keys or remote profiles. Plugin state is kept by phase 13 in its own folder.
 3. **No screens for the knowledge layer at all**, and no source viewer. This is why phases 3 to 6, 9 and 11 are not usable.
 4. **Turso facts still unknown**: the Check result, whether 1 MB and 260 KB requests are accepted, whether the SQL in phases 3, 4, 9 is accepted. One session of running the real migration and Check would answer most of these.
 5. **Nothing has been seen running on a phone**, including the editor itself.
 6. **`BuildWorker` is still a stub** (its own comment: "TODO: read workflow runs"); it only asks the model. Builds run in GitHub Actions but Lily cannot read results.
-7. **Stale docs**: `docs/agent-editor.md` still lists sandbox checks, rename and delete, and Ask in the palette as "not done"; `docs/code-editor.md` still lists fonts, large files, SFTP and plugins as not done; the project memory still lists phases 5 to 12 as unmerged. `docs/ROADMAP.md` is corrected in the plugins PR.
-8. **`main` has moved** since the plugins branch was cut (`101b3d7`, now `4f22e7c`). Check `feat/plugins` for conflicts, especially `LilyFactory.kt`, `AndroidManifest.xml`, `ARCHITECTURE.md` and `docs/ROADMAP.md`.
+7. **Stale docs**: `docs/agent-editor.md` still lists sandbox checks, rename and delete, and Ask in the palette as "not done"; `docs/code-editor.md` still lists fonts, large files, SFTP and plugins as not done; the project memory still lists phases 5 to 12 as unmerged. `docs/ROADMAP.md` and `ARCHITECTURE.md` were corrected by the phase 13 change.
 
 ## Decisions only you can make
 
@@ -55,11 +54,11 @@ Phases 3, 4, 5, 6, 9, 10, 11, 12 and 13 are **logic and tests with no way in**. 
 
 ## Suggested order
 
-0. Check CI on `main`; open a PR for `feat/plugins` and read its build; fix real compile or test failures first.
+0. Check CI on `main` (it now includes phase 13); fix real compile or test failures first.
 1. **Settings and composition root**: embedding endpoints (phase 5), check commands (10), plugin host, one factory for the knowledge stack. Small, unblocks everything.
-2. **Plugin screen and wiring** (13): install the Termux manifest, allow it, approve commands, run one real command. Smallest path to a working feature the person asked for, and it proves the Termux keys.
+2. **Plugin screen and wiring** (13): install the Termux manifest, allow it, approve commands, run one real command. Smallest path to a working feature you asked for, and it proves the Termux keys.
 3. **Run Check and the real migrations** against your Turso, record the answers in the roadmap.
 4. **Knowledge screens** (3, 4, 5, 6, 9): notebooks, add source (which calls the indexer and embedder), ask with citations, a source text viewer so citations open, then levels, insights and chat.
 5. **Verify button** (10) after Accept, then **research screen** (11) with the DNS rebinding fix.
 6. **Remote workspaces** (12): library choice, real clients, screens, workspace switching, push on save.
-7. Polish: ship fonts, persist the code index, make planner see tool descriptions, fix stale docs.
+7. Polish: ship fonts, persist the code index, make the planner see tool descriptions, fix stale docs.
