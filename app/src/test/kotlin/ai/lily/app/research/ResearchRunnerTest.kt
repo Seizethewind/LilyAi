@@ -29,12 +29,17 @@ class FakeSearch : SearchProvider {
     val answers = HashMap<String, Any>()
     val queries = ArrayList<String>()
 
+    /** Addresses a query returns (only for queries set with a list). */
+    fun addressesFor(query: String): List<String> {
+        val answer = answers[query]
+        return if (answer is List<*>) answer.filterIsInstance<String>() else emptyList()
+    }
+
     override suspend fun search(query: String, limit: Int): List<SearchResult> {
         queries += query
         val answer = answers[query] ?: return emptyList()
         if (answer is Throwable) throw answer
-        @Suppress("UNCHECKED_CAST")
-        return (answer as List<String>).take(limit).map { SearchResult(it, it, "") }
+        return addressesFor(query).take(limit).map { SearchResult(it, it, "") }
     }
 }
 
@@ -168,7 +173,7 @@ class ResearchRunnerTest {
     fun resultsAreInterleavedSoOneSearchCannotTakeEveryPage() = runBlocking<Unit> {
         search.answers[question] = listOf("https://u.example/1", "https://u.example/2", "https://u.example/3")
         search.answers["b"] = listOf("https://v.example/1", "https://v.example/2", "https://v.example/3")
-        for (u in search.answers.values.flatMap { @Suppress("UNCHECKED_CAST") (it as List<String>) }) {
+        for (u in search.addressesFor(question) + search.addressesFor("b")) {
             fetcher.pages[u] = page(u, u, boil)
         }
         val budget = ResearchBudget(maxPages = 2, maxFetchAttempts = 6, minPageChars = 10)
@@ -189,8 +194,9 @@ class ResearchRunnerTest {
         fetcher.pages[urls[3]] = page("https://x.example/final", "Final", boil)
         fetcher.pages[urls[4]] = page("https://x.example/final", "Final again", boil)
         fetcher.pages[urls[5]] = IOException("connection reset")
+        val budget = ResearchBudget(resultsPerQuery = 6, minPageChars = 10)
 
-        val report = runner(ScriptedGateway("[]"), ScriptedGateway("[]", "Boil [1].")).run(question)
+        val report = runner(ScriptedGateway("[]"), ScriptedGateway("[]", "Boil [1]."), budget).run(question)
 
         assertEquals(listOf("https://x.example/final"), report.pages.map { it.url })
         assertEquals(5, report.skipped.size)
