@@ -3,6 +3,7 @@ package ai.lily.app
 import android.app.AlertDialog
 import android.os.Bundle
 import android.widget.Button
+import android.widget.CheckBox
 import android.widget.EditText
 import androidx.appcompat.app.AppCompatActivity
 import ai.lily.app.memory.CapabilityProbe
@@ -11,6 +12,9 @@ import ai.lily.app.memory.TursoClient
 import ai.lily.app.memory.TursoConfig
 import ai.lily.app.sandbox.PandaStackConfig
 import ai.lily.app.settings.AppSettings
+import ai.lily.app.settings.CheckCommands
+import ai.lily.app.settings.EmbeddingFields
+import ai.lily.app.settings.EmbeddingSettings
 import ai.lily.app.settings.EncryptedSettingsStore
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.Dispatchers
@@ -19,7 +23,10 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
-/** Lets the user enter router, Turso (Journal, Proven facts and Knowledge) and Pandastack settings. */
+/**
+ * Lets the user enter router, Turso (Journal, Proven facts and Knowledge), embeddings, Pandastack, the sandbox check commands and
+ * the research mode switch.
+ */
 class SettingsActivity : AppCompatActivity() {
     private lateinit var store: EncryptedSettingsStore
     private lateinit var current: AppSettings
@@ -42,17 +49,20 @@ class SettingsActivity : AppCompatActivity() {
         field(R.id.panda_url).setText(current.pandastack?.apiUrl.orEmpty())
         field(R.id.panda_key).setText(current.pandastack?.apiKey.orEmpty())
 
+        val embedding = current.embedding
+        field(R.id.embed_model).setText(embedding?.model.orEmpty())
+        field(R.id.embed_tag).setText(embedding?.tag.orEmpty())
+        field(R.id.embed_dims).setText(embedding?.dimensions?.toString().orEmpty())
+        field(R.id.embed_url).setText(embedding?.primary?.baseUrl.orEmpty())
+        field(R.id.embed_key).setText(embedding?.primary?.apiKey.orEmpty())
+        field(R.id.embed2_url).setText(embedding?.fallback?.baseUrl.orEmpty())
+        field(R.id.embed2_model).setText(embedding?.fallback?.model.orEmpty())
+        field(R.id.embed2_key).setText(embedding?.fallback?.apiKey.orEmpty())
+        field(R.id.verify_checks).setText(CheckCommands.format(current.verifyChecks))
+        findViewById<CheckBox>(R.id.research_mode).isChecked = current.researchMode
+
         findViewById<Button>(R.id.check_knowledge).setOnClickListener { checkKnowledge() }
-        findViewById<Button>(R.id.save).setOnClickListener {
-            val settings = build()
-            val problem = KnowledgeSchema.configProblem(settings)
-            if (problem != null) {
-                show("Not saved", problem)
-            } else {
-                store.save(settings)
-                finish()
-            }
-        }
+        findViewById<Button>(R.id.save).setOnClickListener { save() }
     }
 
     override fun onDestroy() {
@@ -65,6 +75,33 @@ class SettingsActivity : AppCompatActivity() {
 
     private fun show(title: String, message: String): AlertDialog =
         AlertDialog.Builder(this).setTitle(title).setMessage(message).setPositiveButton("OK", null).show()
+
+    private fun embeddingFields(): EmbeddingFields = EmbeddingSettings.fromFields(
+        model = value(R.id.embed_model),
+        tag = value(R.id.embed_tag),
+        dimensions = value(R.id.embed_dims),
+        url = value(R.id.embed_url),
+        key = value(R.id.embed_key),
+        fallbackUrl = value(R.id.embed2_url),
+        fallbackModel = value(R.id.embed2_model),
+        fallbackKey = value(R.id.embed2_key),
+    )
+
+    private fun save() {
+        val embeddingProblem = embeddingFields().problem
+        if (embeddingProblem != null) {
+            show("Not saved", embeddingProblem)
+            return
+        }
+        val settings = build()
+        val problem = KnowledgeSchema.configProblem(settings)
+        if (problem != null) {
+            show("Not saved", problem)
+        } else {
+            store.save(settings)
+            finish()
+        }
+    }
 
     private fun build(): AppSettings {
         val journal = value(R.id.journal_url).takeIf { it.isNotEmpty() }
@@ -86,6 +123,9 @@ class SettingsActivity : AppCompatActivity() {
             factsDb = facts,
             knowledgeDb = knowledge,
             pandastack = panda,
+            embedding = embeddingFields().settings,
+            verifyChecks = CheckCommands.parse(field(R.id.verify_checks).text.toString()),
+            researchMode = findViewById<CheckBox>(R.id.research_mode).isChecked,
         )
     }
 

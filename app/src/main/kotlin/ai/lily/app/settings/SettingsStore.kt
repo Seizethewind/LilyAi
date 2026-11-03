@@ -47,10 +47,23 @@ class EncryptedSettingsStore(context: Context) : SettingsStore {
             },
             knowledgeDb = get("knowledge_url").takeIf { it.isNotBlank() }
                 ?.let { TursoConfig(it, get("knowledge_token")) },
+            embedding = get("embed_url").takeIf { it.isNotBlank() }?.let { url ->
+                EmbeddingSettings(
+                    model = get("embed_model"),
+                    tag = get("embed_tag"),
+                    dimensions = get("embed_dims").toIntOrNull(),
+                    primary = EmbeddingServer(url, get("embed_key")),
+                    fallback = get("embed2_url").takeIf { it.isNotBlank() }
+                        ?.let { EmbeddingServer(it, get("embed2_key"), get("embed2_model")) },
+                )
+            },
+            verifyChecks = CheckCommands.parse(get("verify_checks")),
+            researchMode = get("research_mode") == "1",
         )
     }
 
     override fun save(settings: AppSettings) {
+        val e = settings.embedding
         prefs.edit()
             .putString("router_url", settings.router.baseUrl)
             .putString("router_key", settings.router.apiKey)
@@ -65,6 +78,16 @@ class EncryptedSettingsStore(context: Context) : SettingsStore {
             .putString("panda_url", settings.pandastack?.apiUrl.orEmpty())
             .putString("panda_key", settings.pandastack?.apiKey.orEmpty())
             .putString("panda_template", settings.pandastack?.template.orEmpty())
+            .putString("embed_model", e?.model.orEmpty())
+            .putString("embed_tag", e?.tag.orEmpty())
+            .putString("embed_dims", e?.dimensions?.toString().orEmpty())
+            .putString("embed_url", e?.primary?.baseUrl.orEmpty())
+            .putString("embed_key", e?.primary?.apiKey.orEmpty())
+            .putString("embed2_url", e?.fallback?.baseUrl.orEmpty())
+            .putString("embed2_model", e?.fallback?.model.orEmpty())
+            .putString("embed2_key", e?.fallback?.apiKey.orEmpty())
+            .putString("verify_checks", CheckCommands.format(settings.verifyChecks))
+            .putString("research_mode", if (settings.researchMode) "1" else "")
             .apply()
     }
 }

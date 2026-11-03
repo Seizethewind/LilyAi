@@ -30,9 +30,37 @@
             android:layout_height="wrap_content"
             android:text="Check knowledge database" />
 
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Embeddings (search by meaning)" android:textSize="18sp" />
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:text="Leave everything empty for keyword search only. Use a real model id from the router, never auto. If you add a fallback router for the same model, both use the same tag." android:textSize="12sp" />
+        <EditText android:id="@+id/embed_model" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Embedding model id" android:inputType="text" />
+        <EditText android:id="@+id/embed_tag" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Tag (empty = the model id)" android:inputType="text" />
+        <EditText android:id="@+id/embed_dims" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Dimensions (optional)" android:inputType="number" />
+        <EditText android:id="@+id/embed_url" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Embeddings router URL (ends with /v1)" android:inputType="textUri" />
+        <EditText android:id="@+id/embed_key" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Embeddings router key" android:inputType="textPassword" />
+        <EditText android:id="@+id/embed2_url" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Fallback router URL (optional)" android:inputType="textUri" />
+        <EditText android:id="@+id/embed2_model" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Fallback model id (only if it is named differently)" android:inputType="text" />
+        <EditText android:id="@+id/embed2_key" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Fallback router key" android:inputType="textPassword" />
+
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Pandastack" android:textSize="18sp" />
         <EditText android:id="@+id/panda_url" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="API URL (default api.pandastack.ai)" android:inputType="textUri" />
         <EditText android:id="@+id/panda_key" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Pandastack API key" android:inputType="textPassword" />
+
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Verify in the sandbox" android:textSize="18sp" />
+        <EditText
+            android:id="@+id/verify_checks"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:gravity="top"
+            android:hint="Check commands, one per line (empty = find them in the project)"
+            android:inputType="textMultiLine"
+            android:minLines="3" />
+
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Research" android:textSize="18sp" />
+        <CheckBox
+            android:id="@+id/research_mode"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:text="Research mode: research tasks read web pages and keep them in the knowledge database" />
 
         <Button
             android:id="@+id/save"

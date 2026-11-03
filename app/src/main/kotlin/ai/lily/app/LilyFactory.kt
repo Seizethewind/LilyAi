@@ -13,6 +13,9 @@ import ai.lily.app.memory.TursoJournal
 import ai.lily.app.memory.TursoProvenFacts
 import ai.lily.app.plugins.PluginHost
 import ai.lily.app.sandbox.PandaStackClient
+import ai.lily.app.services.KnowledgeServices
+import ai.lily.app.services.KnowledgeStatus
+import ai.lily.app.services.ServiceBuilder
 import ai.lily.app.settings.AppSettings
 import ai.lily.app.tools.EditorBridge
 import ai.lily.app.tools.SandboxTool
@@ -33,12 +36,16 @@ object LilyFactory {
      * [workspaceRoot] is the project folder; with it the coding worker can find relevant files beyond the open tabs.
      * [plugins] adds the tools of every plugin that is on and allowed (for example the optional Termux plugin). The app's
      * own tools are registered first, so a plugin can never replace one of them.
+     * [knowledge] is the knowledge layer. When `settings.researchMode` is on, the research worker uses its research runner. If
+     * it is not given, it is built from the settings (the knowledge database must be set, see [ServiceBuilder.knowledge]). With
+     * research mode off, or no usable knowledge database, the research worker behaves as before.
      */
     fun create(
         settings: AppSettings,
         editor: EditorBridge? = null,
         workspaceRoot: File? = null,
         plugins: PluginHost? = null,
+        knowledge: KnowledgeServices? = null,
     ): Lily {
         val gateway = RouterModelGateway(settings.router)
 
@@ -48,11 +55,18 @@ object LilyFactory {
             plugins?.registerInto(this)
         }
 
+        val research = if (settings.researchMode) {
+            val services = knowledge ?: (ServiceBuilder.knowledge(settings, gateway) as? KnowledgeStatus.Ready)?.services
+            services?.research
+        } else {
+            null
+        }
+
         val workspace = workspaceRoot?.let { WorkspaceIndex(DiskCodeFiles(it)) }
 
         val manager = WorkerManager().apply {
             register(CodingWorker(gateway, tools, editor, workspace))
-            register(ResearchWorker(gateway, tools))
+            register(ResearchWorker(gateway, tools, research))
             register(BuildWorker(gateway, tools))
             register(GitWorker(gateway, tools))
             register(FileWorker(gateway, tools, editor))
