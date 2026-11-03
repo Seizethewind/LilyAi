@@ -1,7 +1,9 @@
 package ai.lily.app.editor
 
 import ai.lily.app.LilyFactory
+import ai.lily.app.core.Lily
 import ai.lily.app.lib.editor.DraftStore
+import ai.lily.app.plugins.PluginServices
 import ai.lily.app.settings.EncryptedSettingsStore
 import android.net.Uri
 import android.os.Bundle
@@ -44,17 +46,33 @@ class EditorActivity : ComponentActivity() {
         val ops = WorkspaceOps(state, drafts)
         val ui = EditorUi()
         val session = AgentSession(state)
-        // Lily is built the first time she is asked, from the router settings saved in Settings. The project folder lets her coding
-        // worker find relevant files beyond the open tabs.
-        val lily by lazy { LilyFactory.create(EncryptedSettingsStore(applicationContext).load(), session.bridge, root) }
+
+        // Plugins: installed ones are kept in the app's `plugins` folder. The bundled ones (Termux) arrive off, with nothing allowed.
+        val plugins = PluginServices(applicationContext).also { it.installBundled() }
+        val pluginUi = PluginUi()
+
+        // Lily is built the first time she is asked, and again when the person changes a plugin, so a plugin turned on a moment ago
+        // gives her its tools. The project folder lets her coding worker find relevant files beyond the open tabs.
+        var lily: Lily? = null
+        var builtFor = -1
+        fun currentLily(): Lily {
+            val wanted = plugins.version
+            return lily.takeIf { builtFor == wanted } ?: LilyFactory.create(
+                EncryptedSettingsStore(applicationContext).load(), session.bridge, root, plugins.host,
+            ).also {
+                lily = it
+                builtFor = wanted
+            }
+        }
         session.responder = { request ->
-            withContext(Dispatchers.Default) { lily.handle(request) }
+            withContext(Dispatchers.Default) { currentLily().handle(request) }
                 .joinToString("\n\n") { it.output.trim() }
         }
 
         // Extra entries in the command palette.
         val extraCommands = listOf(
             ExtraCommand("Ask Lily") { ui.ask = true },
+            ExtraCommand("Plugins") { pluginUi.open = true },
             ExtraCommand("New folder") { ui.dialog = WsDialog.NewFolder },
             ExtraCommand("Rename or move file or folder") { ui.dialog = WsDialog.PickRename },
             ExtraCommand("Delete file or folder") { ui.dialog = WsDialog.PickDelete },
@@ -68,6 +86,7 @@ class EditorActivity : ComponentActivity() {
                         state.largeFile?.let { big -> LargeFileViewer(big, state) { state.largeFile = null } }
                         AgentOverlay(session, ui, Modifier.align(Alignment.BottomEnd))
                         WorkspaceDialogs(ops, ui)
+                        PluginDialogs(plugins, pluginUi)
                     }
                 }
             }
