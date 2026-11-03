@@ -30,9 +30,16 @@
             android:layout_height="wrap_content"
             android:text="Check knowledge database" />
 
+        <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Embeddings (meaning search)" android:textSize="18sp" />
+        <EditText android:id="@+id/embed_url" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Embeddings URL (ends with /v1), empty = keyword search only" android:inputType="textUri" />
+        <EditText android:id="@+id/embed_key" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Embeddings key (optional)" android:inputType="textPassword" />
+        <EditText android:id="@+id/embed_model" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Embedding model id (never auto)" android:inputType="text" />
+        <EditText android:id="@+id/embed_tag" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Tag (optional, defaults to the model id)" android:inputType="text" />
+
         <TextView android:layout_width="wrap_content" android:layout_height="wrap_content" android:layout_marginTop="16dp" android:text="Pandastack" android:textSize="18sp" />
         <EditText android:id="@+id/panda_url" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="API URL (default api.pandastack.ai)" android:inputType="textUri" />
         <EditText android:id="@+id/panda_key" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Pandastack API key" android:inputType="textPassword" />
+        <EditText android:id="@+id/verify_commands" android:layout_width="match_parent" android:layout_height="wrap_content" android:hint="Check commands, one per line (empty = detect)" android:inputType="textMultiLine" android:minLines="2" android:gravity="top" />
 
         <Button
             android:id="@+id/save"

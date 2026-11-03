@@ -5,6 +5,7 @@ import android.os.Bundle
 import android.widget.Button
 import android.widget.EditText
 import androidx.appcompat.app.AppCompatActivity
+import ai.lily.app.gateway.EmbeddingEndpoint
 import ai.lily.app.memory.CapabilityProbe
 import ai.lily.app.memory.KnowledgeSchema
 import ai.lily.app.memory.TursoClient
@@ -19,7 +20,7 @@ import kotlinx.coroutines.cancel
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
-/** Lets the user enter router, Turso (Journal, Proven facts and Knowledge) and Pandastack settings. */
+/** Lets the user enter router, Turso (Journal, Proven facts and Knowledge), embeddings, Pandastack and check-command settings. */
 class SettingsActivity : AppCompatActivity() {
     private lateinit var store: EncryptedSettingsStore
     private lateinit var current: AppSettings
@@ -39,12 +40,17 @@ class SettingsActivity : AppCompatActivity() {
         field(R.id.facts_token).setText(current.factsDb?.authToken.orEmpty())
         field(R.id.knowledge_url).setText(current.knowledgeDb?.url.orEmpty())
         field(R.id.knowledge_token).setText(current.knowledgeDb?.authToken.orEmpty())
+        field(R.id.embed_url).setText(current.embedding?.baseUrl.orEmpty())
+        field(R.id.embed_key).setText(current.embedding?.apiKey.orEmpty())
+        field(R.id.embed_model).setText(current.embedding?.model.orEmpty())
+        field(R.id.embed_tag).setText(current.embedding?.tag.orEmpty())
         field(R.id.panda_url).setText(current.pandastack?.apiUrl.orEmpty())
         field(R.id.panda_key).setText(current.pandastack?.apiKey.orEmpty())
+        field(R.id.verify_commands).setText(current.verifyCommands.joinToString("\n"))
 
         findViewById<Button>(R.id.check_knowledge).setOnClickListener { checkKnowledge() }
         findViewById<Button>(R.id.save).setOnClickListener {
-            val settings = build()
+            val settings = buildOrExplain() ?: return@setOnClickListener
             val problem = KnowledgeSchema.configProblem(settings)
             if (problem != null) {
                 show("Not saved", problem)
@@ -66,6 +72,14 @@ class SettingsActivity : AppCompatActivity() {
     private fun show(title: String, message: String): AlertDialog =
         AlertDialog.Builder(this).setTitle(title).setMessage(message).setPositiveButton("OK", null).show()
 
+    /** The settings as typed, or null after telling the person what is wrong (for example an embedding model left as "auto"). */
+    private fun buildOrExplain(): AppSettings? = try {
+        build()
+    } catch (e: IllegalArgumentException) {
+        show("Not saved", e.message ?: "A setting is not valid.")
+        null
+    }
+
     private fun build(): AppSettings {
         val journal = value(R.id.journal_url).takeIf { it.isNotEmpty() }
             ?.let { TursoConfig(it, value(R.id.journal_token)) }
@@ -77,6 +91,18 @@ class SettingsActivity : AppCompatActivity() {
             val default = PandaStackConfig(apiKey = key)
             default.copy(apiUrl = value(R.id.panda_url).ifEmpty { default.apiUrl })
         }
+        // EmbeddingEndpoint checks itself: no model, or "auto", is refused with a message the person can act on.
+        val embedding = value(R.id.embed_url).takeIf { it.isNotEmpty() }?.let { url ->
+            val model = value(R.id.embed_model)
+            EmbeddingEndpoint(
+                name = "embedding",
+                baseUrl = url,
+                apiKey = value(R.id.embed_key),
+                model = model,
+                tag = value(R.id.embed_tag).ifEmpty { EmbeddingEndpoint.defaultTag(model, null) },
+            )
+        }
+        val commands = field(R.id.verify_commands).text.toString().lines().map { it.trim() }.filter { it.isNotEmpty() }
         return current.copy(
             router = current.router.copy(
                 baseUrl = value(R.id.router_url).ifEmpty { current.router.baseUrl },
@@ -86,12 +112,14 @@ class SettingsActivity : AppCompatActivity() {
             factsDb = facts,
             knowledgeDb = knowledge,
             pandastack = panda,
+            embedding = embedding,
+            verifyCommands = commands,
         )
     }
 
     /** Asks the knowledge database what it supports (transactions, vector search, full-text search). Changes nothing in it. */
     private fun checkKnowledge() {
-        val settings = build()
+        val settings = buildOrExplain() ?: return
         val config = settings.knowledgeDb
         if (config == null) {
             show("Knowledge database", "Enter the knowledge database URL and token first.")
