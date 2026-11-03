@@ -40,13 +40,14 @@ class AndroidServiceBridge(context: Context) : ServiceBridge {
 
         val spec = call.result
         val requestId = PluginResults.newId()
-        var waiting: CompletableDeferred<Intent>? = null
-        if (spec != null) {
+        val waiting: CompletableDeferred<Intent>? = if (spec == null) {
+            null
+        } else {
             val back = Intent(app, PluginResultReceiver::class.java).putExtra(EXTRA_REQUEST_ID, requestId)
             val mutable = if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) PendingIntent.FLAG_MUTABLE else 0
             val pending = PendingIntent.getBroadcast(app, requestId, back, PendingIntent.FLAG_ONE_SHOT or mutable)
             intent.putExtra(spec.pendingIntentExtra, pending)
-            waiting = PluginResults.expect(requestId)
+            PluginResults.expect(requestId)
         }
 
         try {
@@ -74,11 +75,11 @@ class AndroidServiceBridge(context: Context) : ServiceBridge {
             return ServiceReply.Failed(FailReason.ERROR, e.message ?: e.javaClass.simpleName)
         }
 
-        if (spec == null || waiting == null) return ServiceReply.Sent
+        if (spec == null) return ServiceReply.Sent
+        val channel = waiting ?: return ServiceReply.Sent
 
-        val answer: Intent?
-        try {
-            answer = withTimeoutOrNull(call.timeoutMs) { waiting.await() }
+        val answer: Intent? = try {
+            withTimeoutOrNull(call.timeoutMs) { channel.await() }
         } finally {
             PluginResults.drop(requestId)
         }
