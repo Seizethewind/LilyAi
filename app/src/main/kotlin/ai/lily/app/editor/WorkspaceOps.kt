@@ -15,12 +15,27 @@ import java.io.File
 
 private const val MAX_ENTRIES = 3_000
 
+/** A change to the workspace's files or folders that a remote workspace has to pass on to the server. Paths are relative to the workspace. */
+sealed interface WorkspaceChange {
+    data class NewFolder(val path: String) : WorkspaceChange
+    data class Renamed(val from: String, val to: String) : WorkspaceChange
+    data class Deleted(val path: String) : WorkspaceChange
+
+    /** A file written to disk without being opened in a tab (replace across files). */
+    data class Written(val path: String) : WorkspaceChange
+}
+
 /**
  * What the person can do to the workspace itself: make folders, rename and delete files and folders, and replace text across
  * files. Open tabs are kept in step: a tab for something renamed is reopened under its new name, a tab for something deleted
- * is closed. Nothing leaves the workspace folder.
+ * is closed. Nothing leaves the workspace folder. [onChange] is told after each change succeeds on the phone, so a remote
+ * workspace can repeat it on the server.
  */
-class WorkspaceOps(private val state: EditorState, private val drafts: DraftStore) {
+class WorkspaceOps(
+    private val state: EditorState,
+    private val drafts: DraftStore,
+    private val onChange: suspend (WorkspaceChange) -> Unit = {},
+) {
 
     private fun resolve(rel: String): File? {
         val base = state.root.canonicalFile
@@ -71,6 +86,7 @@ class WorkspaceOps(private val state: EditorState, private val drafts: DraftStor
         }
         val made = withContext(Dispatchers.IO) { dir.mkdirs() }
         state.message = if (made) "Created folder $rel" else "Could not create $rel"
+        if (made) onChange(WorkspaceChange.NewFolder(rel))
     }
 
     /** Renames or moves a file or folder. Refuses if a tab under it has unsaved typing. */
@@ -122,6 +138,7 @@ class WorkspaceOps(private val state: EditorState, private val drafts: DraftStor
         val idx = state.tabs.indexOfFirst { it.path == keep }
         if (idx >= 0) state.active = idx
         state.message = "Renamed $old to $renamed"
+        onChange(WorkspaceChange.Renamed(old, renamed))
     }
 
     /** A sentence for the confirmation: what will be deleted and what will be lost with it. */
@@ -137,7 +154,8 @@ class WorkspaceOps(private val state: EditorState, private val drafts: DraftStor
             "The file $rel will be deleted."
         }
         val extra = if (unsaved.isEmpty()) "" else " Unsaved typing in ${unsaved.joinToString(", ")} will be lost."
-        return "$what$extra This cannot be undone."
+        val remote = if (ai.lily.app.remote.RemoteHub.active != null) " It is deleted on the server too." else ""
+        return "$what$extra$remote This cannot be undone."
     }
 
     /** Deletes a file or folder and closes its tabs. The caller has already asked the person to confirm. */
@@ -156,6 +174,7 @@ class WorkspaceOps(private val state: EditorState, private val drafts: DraftStor
         val deleted = withContext(Dispatchers.IO) { target.deleteRecursively() }
         affected.forEach { dropTab(it) }
         state.message = if (deleted) "Deleted $rel" else "Could not delete everything in $rel"
+        if (deleted) onChange(WorkspaceChange.Deleted(rel))
     }
 
     private fun readForReplace(file: File): String? {
@@ -211,6 +230,7 @@ class WorkspaceOps(private val state: EditorState, private val drafts: DraftStor
                     continue
                 }
                 written++
+                onChange(WorkspaceChange.Written(path))
             } else {
                 continue
             }

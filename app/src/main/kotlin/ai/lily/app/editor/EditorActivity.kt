@@ -4,6 +4,8 @@ import ai.lily.app.LilyFactory
 import ai.lily.app.core.Lily
 import ai.lily.app.lib.editor.DraftStore
 import ai.lily.app.plugins.PluginServices
+import ai.lily.app.remote.RemoteHub
+import ai.lily.app.remote.RemoteStore
 import ai.lily.app.settings.EncryptedSettingsStore
 import android.net.Uri
 import android.os.Bundle
@@ -26,16 +28,21 @@ import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import java.io.File
 
-/** The Acode style code editor, with Lily's coding and file workers connected to it. Files live in the app's own `workspace` folder. */
+/**
+ * The Acode style code editor, with Lily's coding and file workers connected to it. Files live in the app's own `workspace` folder,
+ * or, while a remote connection is open, in the local copy of that server folder.
+ */
 class EditorActivity : ComponentActivity() {
     private lateinit var state: EditorState
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
-        val root = File(filesDir, "workspace").apply { mkdirs() }
-        val drafts = DraftStore(File(filesDir, "drafts"))
-        state = EditorState(root, drafts, EditorPrefs(applicationContext), fonts = ai.lily.app.lib.editor.FontStore(File(filesDir, "fonts")))
+        val remote = RemoteHub.active
+        val root = remote?.localRoot ?: File(filesDir, "workspace").apply { mkdirs() }
+        val drafts = DraftStore(File(remote?.dir ?: filesDir, "drafts"))
+        val prefs = EditorPrefs(applicationContext, remote?.profile?.id.orEmpty())
+        state = EditorState(root, drafts, prefs, fonts = ai.lily.app.lib.editor.FontStore(File(filesDir, "fonts")))
 
         // The phone's file picker, for adding a font file. Fonts have no single file type, so every file is offered and the app checks it.
         val fontPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -43,7 +50,16 @@ class EditorActivity : ComponentActivity() {
         }
         state.importFont = { fontPicker.launch(arrayOf("*/*")) }
 
-        val ops = WorkspaceOps(state, drafts)
+        // Remote workspaces. Connecting or disconnecting rebuilds this screen on the right folder.
+        val remoteUi = RemoteUi(
+            store = RemoteStore(applicationContext),
+            scope = lifecycleScope,
+            say = { state.message = it },
+            onSessionChanged = { recreate() },
+        )
+        if (remote != null) remoteUi.watchSaves(state)
+
+        val ops = WorkspaceOps(state, drafts) { change -> remoteUi.onChange(change) }
         val ui = EditorUi()
         val session = AgentSession(state)
 
@@ -72,6 +88,7 @@ class EditorActivity : ComponentActivity() {
         // Extra entries in the command palette.
         val extraCommands = listOf(
             ExtraCommand("Ask Lily") { ui.ask = true },
+            ExtraCommand("Remote workspaces") { remoteUi.manager = true },
             ExtraCommand("Plugins") { pluginUi.open = true },
             ExtraCommand("New folder") { ui.dialog = WsDialog.NewFolder },
             ExtraCommand("Rename or move file or folder") { ui.dialog = WsDialog.PickRename },
@@ -87,6 +104,8 @@ class EditorActivity : ComponentActivity() {
                         AgentOverlay(session, ui, Modifier.align(Alignment.BottomEnd))
                         WorkspaceDialogs(ops, ui)
                         PluginDialogs(plugins, pluginUi)
+                        RemoteBanner(Modifier.align(Alignment.TopCenter))
+                        RemoteDialogs(remoteUi)
                     }
                 }
             }
@@ -121,5 +140,11 @@ class EditorActivity : ComponentActivity() {
             state.flushDrafts()
             state.saveSession()
         }
+    }
+
+    /** Leaving the editor for good closes the server connection. Being rebuilt (connect, disconnect, rotate) does not. */
+    override fun onDestroy() {
+        super.onDestroy()
+        if (isFinishing) RemoteHub.close()
     }
 }
