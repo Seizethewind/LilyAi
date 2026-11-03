@@ -6,14 +6,14 @@ data class ExtractedPage(val title: String, val text: String, val truncated: Boo
 /**
  * Turns a web page into plain text, keeping its line structure (research cites line ranges, so lines must stay stable).
  *
- * Removed with their contents: scripts, styles, `noscript`, `template`, `svg`, `iframe`, `object`, `head` and comments. Block tags
- * become line breaks, other tags vanish, character references are decoded, runs of spaces collapse and more than one blank line
- * collapses to one.
+ * Removed with their contents: scripts, styles, `noscript`, `template`, `svg`, `iframe`, `object`, `head`, `title` (it is returned
+ * separately) and comments. Block tags become line breaks, other tags vanish, character references are decoded, runs of spaces
+ * collapse and more than one blank line collapses to one.
  *
  * Known limits: this is a text filter, not a browser. It does not run scripts, so pages that build their text in JavaScript come
  * out empty. It does not know what is hidden by CSS, so text hidden from a reader (a common place for injected instructions) can
  * still appear; that is why everything extracted is stored as untrusted source text. An element that is never closed (a
- * `<script>` with no end tag) leaves its contents behind as text.
+ * script with no end tag) leaves its contents behind as text.
  */
 object HtmlExtractor {
     private const val TITLE_LENGTH = 200
@@ -22,7 +22,7 @@ object HtmlExtractor {
     private val TITLE = Regex("<title\\b[^>]*>(.*?)</title\\s*>", OPTIONS)
     private val COMMENT = Regex("<!--.*?-->", RegexOption.DOT_MATCHES_ALL)
     private val DROPPED = Regex(
-        "<(script|style|noscript|template|svg|iframe|object|head)\\b[^>]*>.*?</\\1\\s*>",
+        "<(script|style|noscript|template|svg|iframe|object|head|title)\\b[^>]*>.*?</\\1\\s*>",
         OPTIONS,
     )
     private val BREAKS = Regex(
