@@ -1,21 +1,31 @@
 package ai.lily.app.editor
 
 import ai.lily.app.LilyFactory
+import ai.lily.app.SettingsScreen
 import ai.lily.app.core.Lily
 import ai.lily.app.lib.editor.DraftStore
 import ai.lily.app.plugins.PluginServices
 import ai.lily.app.remote.RemoteHub
 import ai.lily.app.remote.RemoteStore
 import ai.lily.app.settings.EncryptedSettingsStore
+import ai.lily.app.shell.AppSidebar
+import ai.lily.app.shell.BrowseScreen
+import ai.lily.app.shell.BrowseState
+import ai.lily.app.shell.Section
+import ai.lily.app.shell.ShellNav
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.BackHandler
 import androidx.activity.compose.setContent
 import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
@@ -30,11 +40,13 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * The Acode style code editor, with Lily's coding and file workers connected to it. Files live in the app's own `workspace` folder,
- * or, while a remote connection is open, in the local copy of that server folder.
+ * The app. A permanent left sidebar switches between four sections: Work (the Acode style code editor with Lily's coding and file
+ * workers), Browse, Plugins and Settings. Files live in the app's own `workspace` folder, or, while a remote connection is open,
+ * in the local copy of that server folder.
  */
 class EditorActivity : ComponentActivity() {
     private lateinit var state: EditorState
+    private var browse: BrowseState? = null
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
@@ -66,7 +78,10 @@ class EditorActivity : ComponentActivity() {
 
         // Plugins: installed ones are kept in the app's `plugins` folder. The bundled ones (Termux) arrive off, with nothing allowed.
         val plugins = PluginServices(applicationContext).also { it.installBundled() }
-        val pluginUi = PluginUi()
+
+        // Which section shows, and the browser page that stays alive while another section is open.
+        val nav = ShellNav()
+        val browser = BrowseState(this).also { browse = it }
 
         // Termux's run-command permission is a runtime one: declaring it is not enough, Android must be asked.
         val termuxPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -77,8 +92,8 @@ class EditorActivity : ComponentActivity() {
             }
         }
 
-        // Lily is built the first time she is asked, and again when the person changes a plugin, so a plugin turned on a moment ago
-        // gives her its tools. The project folder lets her coding worker find relevant files beyond the open tabs.
+        // Lily is built the first time she is asked, and again when the person changes a plugin or saves settings, so a plugin
+        // turned on a moment ago gives her its tools. The project folder lets her coding worker find relevant files beyond the open tabs.
         var lily: Lily? = null
         var builtFor = -1
         fun currentLily(): Lily {
@@ -99,7 +114,7 @@ class EditorActivity : ComponentActivity() {
         val extraCommands = listOf(
             ExtraCommand("Ask Lily") { ui.ask = true; askTermuxPermission() },
             ExtraCommand("Remote workspaces") { remoteUi.manager = true },
-            ExtraCommand("Plugins") { pluginUi.open = true; askTermuxPermission() },
+            ExtraCommand("Plugins") { nav.section = Section.Plugins; askTermuxPermission() },
             ExtraCommand("New folder") { ui.dialog = WsDialog.NewFolder },
             ExtraCommand("Rename or move file or folder") { ui.dialog = WsDialog.PickRename },
             ExtraCommand("Delete file or folder") { ui.dialog = WsDialog.PickDelete },
@@ -107,16 +122,31 @@ class EditorActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme(colorScheme = if (state.theme.dark) darkColorScheme() else lightColorScheme()) {
+                // Back from any other section goes to Work first.
+                BackHandler(enabled = nav.section != Section.Work) { nav.section = Section.Work }
                 CompositionLocalProvider(LocalWorkspaceOps provides ops) {
-                    Box(Modifier.fillMaxSize()) {
-                        EditorScreen(state, extraCommands)
-                        state.largeFile?.let { big -> LargeFileViewer(big, state) { state.largeFile = null } }
-                        AgentOverlay(session, ui, Modifier.align(Alignment.BottomEnd))
-                        WorkspaceDialogs(ops, ui)
-                        PluginDialogs(plugins, pluginUi)
-                        RemoteBanner(Modifier.align(Alignment.TopCenter))
-                        RemoteDialogs(remoteUi)
+                    Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                        AppSidebar(nav, onSelect = { section ->
+                            nav.section = section
+                            if (section == Section.Plugins) askTermuxPermission()
+                        })
+                        Box(Modifier.weight(1f).fillMaxHeight()) {
+                            when (nav.section) {
+                                Section.Work -> Box(Modifier.fillMaxSize()) {
+                                    EditorScreen(state, extraCommands)
+                                    state.largeFile?.let { big -> LargeFileViewer(big, state) { state.largeFile = null } }
+                                    AgentOverlay(session, ui, Modifier.align(Alignment.BottomEnd))
+                                    WorkspaceDialogs(ops, ui)
+                                    RemoteBanner(Modifier.align(Alignment.TopCenter))
+                                    RemoteDialogs(remoteUi)
+                                }
+                                Section.Browse -> BrowseScreen(browser)
+                                Section.Plugins -> PluginsScreen(plugins)
+                                Section.Settings -> SettingsScreen(this@EditorActivity, lifecycleScope, onSaved = { lily = null })
+                            }
+                        }
                     }
+                    PluginDialogs(plugins)
                 }
             }
         }
@@ -155,6 +185,7 @@ class EditorActivity : ComponentActivity() {
     /** Leaving the editor for good closes the server connection. Being rebuilt (connect, disconnect, rotate) does not. */
     override fun onDestroy() {
         super.onDestroy()
+        browse?.web?.destroy()
         if (isFinishing) RemoteHub.close()
     }
 
