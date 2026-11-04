@@ -11,8 +11,9 @@ class LlmPlanner(private val gateway: ModelGateway) : Planner {
     override suspend fun plan(request: String, context: Context): List<Task> {
         val system = "You are a planner. Break the request into small tasks. " +
             "Reply with ONLY a JSON array. Each item has description and worker. " +
-            "worker is one of CODING, RESEARCH, BUILD, GIT, FILE, GENERAL. " +
-            "Use BUILD for anything to run in a shell or terminal (Termux), and for builds and tests."
+            "worker is one of CODING, RESEARCH, BUILD, GIT, FILE, GENERAL, TEST. " +
+            "Use BUILD for anything to run in a shell or terminal (Termux), and for builds. " +
+            "Use TEST to review code, hunt for bugs or write test cases."
         val text = gateway.complete(ModelRequest(prompt = request, system = system, model = "auto:smart")).text
         return parse(text) ?: listOf(Task(UUID.randomUUID().toString(), request, WorkerType.GENERAL))
     }
