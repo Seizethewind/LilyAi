@@ -8,3 +8,6 @@
 -dontwarn com.sun.jna.**
 -dontwarn org.bouncycastle.**
 -dontwarn javax.naming.**
+# Tink (via androidx.security.crypto) references annotation-only classes that are not shipped.
+-dontwarn javax.annotation.**
+-dontwarn javax.annotation.concurrent.**
