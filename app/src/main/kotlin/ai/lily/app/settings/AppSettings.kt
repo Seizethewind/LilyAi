@@ -9,10 +9,6 @@ import ai.lily.app.workers.WorkerProfile
 /** Everything the user configures in the app. Null means not configured. */
 data class AppSettings(
     val router: RouterConfig = RouterConfig(),
-    /** A second router, for spreading workers over two self-hosted routers. Null means only one is used. */
-    val router2: RouterConfig? = null,
-    /** The workers the person or Lily created. Empty means the built-in workers answer. */
-    val workers: List<WorkerProfile> = emptyList(),
     val journalDb: TursoConfig? = null,
     val factsDb: TursoConfig? = null,
     val pandastack: PandaStackConfig? = null,
@@ -22,6 +18,10 @@ data class AppSettings(
     val embedding: EmbeddingEndpoint? = null,
     /** Shell commands the sandbox check runs instead of the ones it detects. One command per entry; empty means detect. */
     val verifyCommands: List<String> = emptyList(),
+    /** A second router, for spreading workers over two self-hosted routers. Null means only one is used. */
+    val router2: RouterConfig? = null,
+    /** The workers the person or Lily created. Empty means the built-in workers answer. */
+    val workers: List<WorkerProfile> = emptyList(),
 ) {
     /** The router a worker points at: 0 is the first, 1 the second. A missing second router falls back to the first. */
     fun routerAt(index: Int): RouterConfig = if (index == 1) router2 ?: router else router
