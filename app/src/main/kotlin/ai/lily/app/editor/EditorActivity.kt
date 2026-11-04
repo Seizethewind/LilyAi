@@ -11,6 +11,7 @@ import ai.lily.app.remote.RemoteHub
 import ai.lily.app.remote.RemoteStore
 import ai.lily.app.settings.EncryptedSettingsStore
 import ai.lily.app.shell.AiScreen
+import ai.lily.app.shell.AppBottomBar
 import ai.lily.app.shell.AppSidebar
 import ai.lily.app.shell.BrowseScreen
 import ai.lily.app.shell.BrowseState
@@ -21,6 +22,7 @@ import ai.lily.app.shell.ShellNav
 import ai.lily.app.shell.TaskQueue
 import ai.lily.app.shell.TaskService
 import ai.lily.app.shell.TaskStore
+import ai.lily.app.ui.LilyTheme
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -34,17 +36,24 @@ import androidx.activity.enableEdgeToEdge
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Box
+import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.WindowInsets
+import androidx.compose.foundation.layout.consumeWindowInsets
 import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.ime
+import androidx.compose.foundation.layout.navigationBars
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.darkColorScheme
-import androidx.compose.material3.lightColorScheme
+import androidx.compose.runtime.Composable
 import androidx.compose.runtime.CompositionLocalProvider
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalConfiguration
+import androidx.compose.ui.platform.LocalDensity
 import androidx.lifecycle.lifecycleScope
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.launch
@@ -52,9 +61,10 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * The app. A permanent left sidebar switches between six sections: Work (the Acode style code editor with Lily's coding and file
- * workers), Browse, Plugins, AI (routers, models and workers), Chat (free talk with Lily, and the queue of background tasks) and
- * Settings. Files live in the app's own `workspace` folder, or, while a remote connection is open, in the local copy of that server folder.
+ * The app. Six sections: Work (the Acode style code editor with Lily's coding and file workers), Chat (free talk with Lily, and the
+ * queue of background tasks), Browse, Plugins, AI (routers, models and workers) and Settings. On a phone they sit in a bar along the
+ * bottom, within thumb's reach; on a wide screen they run down the left edge. Files live in the app's own `workspace` folder, or,
+ * while a remote connection is open, in the local copy of that server folder.
  */
 class EditorActivity : ComponentActivity() {
     private lateinit var state: EditorState
@@ -171,42 +181,57 @@ class EditorActivity : ComponentActivity() {
         )
 
         setContent {
-            MaterialTheme(colorScheme = if (state.theme.dark) darkColorScheme() else lightColorScheme()) {
+            LilyTheme(dark = state.theme.dark) {
                 // Back from any other section goes to Work first. From Work, while tasks are running, it sends the app to the
                 // background instead of closing it, because closing it would stop them.
                 BackHandler(enabled = nav.section != Section.Work || queue.busy) {
                     if (nav.section != Section.Work) nav.section = Section.Work else this@EditorActivity.moveTaskToBack(true)
                 }
                 CompositionLocalProvider(LocalWorkspaceOps provides ops) {
-                    Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-                        AppSidebar(
-                            nav,
-                            onSelect = { section ->
-                                nav.section = section
-                                if (section == Section.Plugins) askTermuxPermission()
-                            },
-                            badge = { section -> if (section == Section.Chat) queue.needYou else 0 },
-                        )
-                        Box(Modifier.weight(1f).fillMaxHeight()) {
-                            when (nav.section) {
-                                Section.Work -> Box(Modifier.fillMaxSize()) {
-                                    // The palette also lists the prompt commands of every plugin that is turned on.
-                                    val commands = remember(plugins.version) { extraCommands + promptCommands(plugins, session, nav) }
-                                    EditorScreen(state, commands)
-                                    state.largeFile?.let { big -> LargeFileViewer(big, state) { state.largeFile = null } }
-                                    AgentOverlay(session, ui, Modifier.align(Alignment.BottomEnd))
-                                    WorkspaceDialogs(ops, ui)
-                                    RemoteBanner(Modifier.align(Alignment.TopCenter))
-                                    RemoteDialogs(remoteUi)
-                                }
-                                Section.Browse -> BrowseScreen(browser)
-                                Section.Plugins -> PluginsScreen(plugins)
-                                Section.Ai -> AiScreen(settingsStore, onChanged = { lily = null })
-                                Section.Chat -> ChatScreen(chat, queue, onReview = {
-                                    session.startReview()
-                                    nav.section = Section.Work
-                                })
-                                Section.Settings -> SettingsScreen(this@EditorActivity, lifecycleScope, onSaved = { lily = null })
+                    val wide = LocalConfiguration.current.screenWidthDp >= 600
+                    // While the keyboard is up the bottom bar steps aside, so typing never squeezes the screen between the two.
+                    val keyboardUp = WindowInsets.ime.getBottom(LocalDensity.current) > 0
+                    val onSelect: (Section) -> Unit = { section ->
+                        nav.section = section
+                        if (section == Section.Plugins) askTermuxPermission()
+                    }
+                    val badge: (Section) -> Int = { section -> if (section == Section.Chat) queue.needYou else 0 }
+
+                    val sections: @Composable () -> Unit = {
+                        when (nav.section) {
+                            Section.Work -> Box(Modifier.fillMaxSize()) {
+                                // The palette also lists the prompt commands of every plugin that is turned on.
+                                val commands = remember(plugins.version) { extraCommands + promptCommands(plugins, session, nav) }
+                                EditorScreen(state, commands)
+                                state.largeFile?.let { big -> LargeFileViewer(big, state) { state.largeFile = null } }
+                                AgentOverlay(session, ui, Modifier.align(Alignment.BottomEnd))
+                                WorkspaceDialogs(ops, ui)
+                                RemoteBanner(Modifier.align(Alignment.TopCenter))
+                                RemoteDialogs(remoteUi)
+                            }
+                            Section.Chat -> ChatScreen(chat, queue, onReview = {
+                                session.startReview()
+                                nav.section = Section.Work
+                            })
+                            Section.Browse -> BrowseScreen(browser)
+                            Section.Plugins -> PluginsScreen(plugins)
+                            Section.Ai -> AiScreen(settingsStore, onChanged = { lily = null })
+                            Section.Settings -> SettingsScreen(this@EditorActivity, lifecycleScope, onSaved = { lily = null })
+                        }
+                    }
+
+                    Box(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
+                        if (wide) {
+                            Row(Modifier.fillMaxSize()) {
+                                AppSidebar(nav, onSelect, badge = badge)
+                                Box(Modifier.weight(1f).fillMaxHeight()) { sections() }
+                            }
+                        } else {
+                            Column(Modifier.fillMaxSize()) {
+                                // The bar below already clears the gesture area, so the screen above must not clear it a second time.
+                                val above = if (keyboardUp) Modifier else Modifier.consumeWindowInsets(WindowInsets.navigationBars)
+                                Box(Modifier.weight(1f).fillMaxWidth().then(above)) { sections() }
+                                if (!keyboardUp) AppBottomBar(nav, onSelect, badge = badge)
                             }
                         }
                     }
