@@ -7,6 +7,7 @@ import ai.lily.app.plugins.PluginServices
 import ai.lily.app.remote.RemoteHub
 import ai.lily.app.remote.RemoteStore
 import ai.lily.app.settings.EncryptedSettingsStore
+import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
 import android.provider.OpenableColumns
@@ -67,6 +68,15 @@ class EditorActivity : ComponentActivity() {
         val plugins = PluginServices(applicationContext).also { it.installBundled() }
         val pluginUi = PluginUi()
 
+        // Termux's run-command permission is a runtime one: declaring it is not enough, Android must be asked.
+        val termuxPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+        fun askTermuxPermission() {
+            val on = plugins.registry.get("lily.termux")?.state?.enabled == true
+            if (on && checkSelfPermission(TERMUX_RUN_COMMAND) != PackageManager.PERMISSION_GRANTED) {
+                termuxPermission.launch(TERMUX_RUN_COMMAND)
+            }
+        }
+
         // Lily is built the first time she is asked, and again when the person changes a plugin, so a plugin turned on a moment ago
         // gives her its tools. The project folder lets her coding worker find relevant files beyond the open tabs.
         var lily: Lily? = null
@@ -87,9 +97,9 @@ class EditorActivity : ComponentActivity() {
 
         // Extra entries in the command palette.
         val extraCommands = listOf(
-            ExtraCommand("Ask Lily") { ui.ask = true },
+            ExtraCommand("Ask Lily") { ui.ask = true; askTermuxPermission() },
             ExtraCommand("Remote workspaces") { remoteUi.manager = true },
-            ExtraCommand("Plugins") { pluginUi.open = true },
+            ExtraCommand("Plugins") { pluginUi.open = true; askTermuxPermission() },
             ExtraCommand("New folder") { ui.dialog = WsDialog.NewFolder },
             ExtraCommand("Rename or move file or folder") { ui.dialog = WsDialog.PickRename },
             ExtraCommand("Delete file or folder") { ui.dialog = WsDialog.PickDelete },
@@ -146,5 +156,9 @@ class EditorActivity : ComponentActivity() {
     override fun onDestroy() {
         super.onDestroy()
         if (isFinishing) RemoteHub.close()
+    }
+
+    private companion object {
+        const val TERMUX_RUN_COMMAND = "com.termux.permission.RUN_COMMAND"
     }
 }
