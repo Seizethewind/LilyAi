@@ -10,27 +10,17 @@ import ai.lily.app.settings.AppSettings
 import ai.lily.app.settings.EncryptedSettingsStore
 import android.app.Activity
 import android.app.AlertDialog
-import android.view.LayoutInflater
 import android.view.View
-import android.view.ViewGroup
 import android.widget.Button
 import android.widget.EditText
-import android.widget.TextView
-import androidx.compose.foundation.layout.fillMaxSize
-import androidx.compose.foundation.layout.imePadding
-import androidx.compose.foundation.layout.navigationBarsPadding
-import androidx.compose.foundation.layout.statusBarsPadding
-import androidx.compose.material3.MaterialTheme
-import androidx.compose.ui.Modifier
-import androidx.compose.ui.graphics.toArgb
-import androidx.compose.ui.viewinterop.AndroidView
 import kotlinx.coroutines.CoroutineScope
 import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * The settings form: Turso (Journal, Proven facts and Knowledge), embeddings, Pandastack and check commands. Routers, models and
- * workers are in the AI section; saving here keeps them exactly as they are.
+ * The classic settings form for [SettingsActivity]: Turso (Journal, Proven facts and Knowledge), embeddings, Pandastack and check commands.
+ * Inside the app, the Settings section shows the same fields as a Compose screen (SettingsScreenUi.kt).
+ * Routers, models and workers are in the AI section; saving here keeps them exactly as they are.
  * Secrets (keys and tokens) sit in password fields and are saved only in the encrypted store.
  * [root] is the inflated activity_settings layout; [onSaved] runs after a successful save.
  */
@@ -132,7 +122,7 @@ class SettingsPanel(
             show("Knowledge database", it)
             return
         }
-        val waiting = show("Knowledge database", "Checking\u2026")
+        val waiting = show("Knowledge database", "Checking…")
         scope.launch {
             val text = try {
                 CapabilityProbe(TursoClient(config)).run().summary()
@@ -145,33 +135,4 @@ class SettingsPanel(
             show("Knowledge database", text)
         }
     }
-}
-
-/** The Settings section: the settings form as a full screen, coloured to match the rest of the app. */
-@androidx.compose.runtime.Composable
-fun SettingsScreen(activity: Activity, scope: CoroutineScope, onSaved: () -> Unit, modifier: Modifier = Modifier) {
-    val background = MaterialTheme.colorScheme.background.toArgb()
-    val text = MaterialTheme.colorScheme.onBackground.toArgb()
-    AndroidView(
-        modifier = modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().imePadding(),
-        factory = { context ->
-            LayoutInflater.from(context).inflate(R.layout.activity_settings, null).also {
-                SettingsPanel(activity, it, scope, onSaved).bind()
-            }
-        },
-        update = { view ->
-            view.setBackgroundColor(background)
-            recolor(view, text)
-        },
-    )
-}
-
-/** The form is a classic layout, so its labels follow the app's colours here. Buttons keep their own look. */
-private fun recolor(view: View, text: Int) {
-    if (view is Button) return
-    if (view is TextView) {
-        view.setTextColor(text)
-        view.setHintTextColor((text and 0x00FFFFFF) or 0x80000000.toInt())
-    }
-    if (view is ViewGroup) for (i in 0 until view.childCount) recolor(view.getChildAt(i), text)
 }
