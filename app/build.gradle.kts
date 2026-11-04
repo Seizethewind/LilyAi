@@ -63,6 +63,8 @@ dependencies {
     implementation(platform(libs.androidx.compose.bom))
     implementation(libs.androidx.compose.ui)
     implementation(libs.androidx.compose.material3)
+    // Sidebar icons (Edit, Search, Build, Settings). Version comes from the Compose BOM.
+    implementation("androidx.compose.material:material-icons-core")
     implementation(libs.androidx.activity.compose)
 
     // Remote workspaces. SFTP: the maintained JSch fork (modern algorithms, weak ones off by default). FTPS/FTP: Apache Commons Net.
