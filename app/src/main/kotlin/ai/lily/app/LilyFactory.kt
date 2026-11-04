@@ -7,6 +7,8 @@ import ai.lily.app.core.Lily
 import ai.lily.app.core.LlmPlanner
 import ai.lily.app.core.Memory
 import ai.lily.app.core.WorkerManager
+import ai.lily.app.core.WorkerType
+import ai.lily.app.gateway.ModelGateway
 import ai.lily.app.gateway.RouterModelGateway
 import ai.lily.app.memory.TursoClient
 import ai.lily.app.memory.TursoJournal
@@ -23,7 +25,10 @@ import ai.lily.app.workers.CodingWorker
 import ai.lily.app.workers.FileWorker
 import ai.lily.app.workers.GeneralWorker
 import ai.lily.app.workers.GitWorker
+import ai.lily.app.workers.ModelWorker
+import ai.lily.app.workers.ProfileGateway
 import ai.lily.app.workers.ResearchWorker
+import ai.lily.app.workers.Worker
 import java.io.File
 
 /** Wires everything together from the user's settings. */
@@ -33,6 +38,8 @@ object LilyFactory {
      * [workspaceRoot] is the project folder; with it the coding worker can find relevant files beyond the open tabs.
      * [plugins] adds the tools of every plugin that is on and allowed (for example the optional Termux plugin). The app's
      * own tools are registered first, so a plugin can never replace one of them.
+     * Workers the person created (settings.workers) take over their role from the built-in worker, each with its own router,
+     * model and instructions. A role with no created workers keeps the built-in one.
      */
     fun create(
         settings: AppSettings,
@@ -41,6 +48,7 @@ object LilyFactory {
         plugins: PluginHost? = null,
     ): Lily {
         val gateway = RouterModelGateway(settings.router)
+        val second: ModelGateway? = settings.router2?.let { RouterModelGateway(it) }
 
         val tools = ToolSystem().apply {
             register(WebSearchTool(gateway, settings.router.webSearchModel))
@@ -50,13 +58,30 @@ object LilyFactory {
 
         val workspace = workspaceRoot?.let { WorkspaceIndex(DiskCodeFiles(it)) }
 
+        fun worker(type: WorkerType, g: ModelGateway): Worker = when (type) {
+            WorkerType.CODING -> CodingWorker(g, tools, editor, workspace)
+            WorkerType.RESEARCH -> ResearchWorker(g, tools)
+            WorkerType.BUILD -> BuildWorker(g, tools)
+            WorkerType.GIT -> GitWorker(g, tools)
+            WorkerType.FILE -> FileWorker(g, tools, editor)
+            WorkerType.GENERAL -> GeneralWorker(g, tools)
+            WorkerType.TEST -> ModelWorker(WorkerType.TEST, g, tools)
+        }
+
+        val created = settings.workers.filter { it.enabled }.groupBy { it.role }
         val manager = WorkerManager().apply {
-            register(CodingWorker(gateway, tools, editor, workspace))
-            register(ResearchWorker(gateway, tools))
-            register(BuildWorker(gateway, tools))
-            register(GitWorker(gateway, tools))
-            register(FileWorker(gateway, tools, editor))
-            register(GeneralWorker(gateway, tools))
+            for (type in WorkerType.values()) {
+                val profiles = created[type].orEmpty()
+                if (profiles.isEmpty()) {
+                    // Testers exist only when the person makes them; every other role always has a built-in worker.
+                    if (type != WorkerType.TEST) register(worker(type, gateway))
+                } else {
+                    for (p in profiles) {
+                        val router = if (p.router == 1 && second != null) second else gateway
+                        register(worker(type, ProfileGateway(router, p.model, p.instructions)))
+                    }
+                }
+            }
         }
 
         val journalDb = settings.journalDb
