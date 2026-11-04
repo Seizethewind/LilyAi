@@ -1,0 +1,12 @@
+{
+  "schema": 1,
+  "plugins": [
+    {
+      "id": "lily.prompts.basic",
+      "name": "Prompt helpers",
+      "version": "1.0.0",
+      "description": "Command palette entries that ask Lily to explain, review, test or comment the selected code.",
+      "manifest": "https://raw.githubusercontent.com/Seizethewind/LilyAi/main/plugins/lily-prompts.json"
+    }
+  ]
+}

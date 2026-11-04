@@ -6,6 +6,7 @@ import ai.lily.app.core.Lily
 import ai.lily.app.core.TaskResult
 import ai.lily.app.lib.editor.DraftStore
 import ai.lily.app.plugins.PluginServices
+import ai.lily.app.plugins.fillPrompt
 import ai.lily.app.remote.RemoteHub
 import ai.lily.app.remote.RemoteStore
 import ai.lily.app.settings.EncryptedSettingsStore
@@ -40,6 +41,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.remember
 import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -188,7 +190,9 @@ class EditorActivity : ComponentActivity() {
                         Box(Modifier.weight(1f).fillMaxHeight()) {
                             when (nav.section) {
                                 Section.Work -> Box(Modifier.fillMaxSize()) {
-                                    EditorScreen(state, extraCommands)
+                                    // The palette also lists the prompt commands of every plugin that is turned on.
+                                    val commands = remember(plugins.version) { extraCommands + promptCommands(plugins, session, nav) }
+                                    EditorScreen(state, commands)
                                     state.largeFile?.let { big -> LargeFileViewer(big, state) { state.largeFile = null } }
                                     AgentOverlay(session, ui, Modifier.align(Alignment.BottomEnd))
                                     WorkspaceDialogs(ops, ui)
@@ -211,6 +215,23 @@ class EditorActivity : ComponentActivity() {
             }
         }
     }
+
+    /**
+     * Palette entries from plugins that are on. Running one sends its text, with the selection, file and language filled in, to Lily.
+     * The reply and any proposed edits come back the usual way, for the person to read and accept.
+     */
+    private fun promptCommands(plugins: PluginServices, session: AgentSession, nav: ShellNav): List<ExtraCommand> =
+        plugins.registry.list().filter { it.state.enabled }.flatMap { plugin ->
+            plugin.manifest.promptCommands.map { command ->
+                ExtraCommand("${plugin.manifest.name}: ${command.name}") {
+                    val tab = state.current
+                    val selection = tab?.value?.let { it.text.substring(it.selection.min, it.selection.max) }.orEmpty()
+                    val path = tab?.path.orEmpty()
+                    nav.section = Section.Work
+                    lifecycleScope.launch { session.ask(fillPrompt(command.template, selection, path, path.substringAfterLast('.', ""))) }
+                }
+            }
+        }
 
     /** Reads the font the person picked and hands it to the editor, which checks it and keeps a copy. */
     private suspend fun addFont(uri: Uri) {

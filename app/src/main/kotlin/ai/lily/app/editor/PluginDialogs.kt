@@ -5,6 +5,7 @@ import ai.lily.app.plugins.InstalledPlugin
 import ai.lily.app.plugins.Permission
 import ai.lily.app.plugins.PluginServices
 import ai.lily.app.plugins.PromptGate
+import ai.lily.app.plugins.Visible
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
@@ -66,21 +67,24 @@ private fun ConfirmRunDialog(pending: PromptGate.Pending, gate: PromptGate) {
     )
 }
 
-/** The Plugins section: every installed plugin with its switches, and a way to add one. */
+/** The Plugins section: every installed plugin with its switches, a catalog to install from, and a way to paste one in. */
 @Composable
 fun PluginsScreen(services: PluginServices, modifier: Modifier = Modifier) {
     val version = services.version
     val plugins = remember(version) { services.registry.list() }
     var adding by remember { mutableStateOf(false) }
+    var catalog by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf<String?>(null) }
 
     LazyColumn(modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 16.dp)) {
         item {
             Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
                 Text("Plugins", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                TextButton(onClick = { catalog = !catalog }) { Text("Catalog") }
                 TextButton(onClick = { adding = true }) { Text("Add from JSON") }
             }
         }
+        if (catalog) item { CatalogPanel(services) { message -> note = message } }
         note?.let { message ->
             item {
                 Text(message, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
@@ -112,6 +116,15 @@ private fun PluginCard(plugin: InstalledPlugin, services: PluginServices, onNote
                 Text(manifest.description, style = MaterialTheme.typography.bodySmall)
             }
             Switch(checked = plugin.state.enabled, onCheckedChange = { on -> services.setEnabled(manifest.id, on) })
+        }
+
+        if (manifest.promptCommands.isNotEmpty()) {
+            Text("Command palette (shown while the plugin is on)", style = MaterialTheme.typography.labelMedium, modifier = Modifier.padding(top = 8.dp))
+            for (command in manifest.promptCommands) {
+                Text(command.name, style = MaterialTheme.typography.bodyMedium)
+                // The text sent to Lily, with hidden characters made visible, so what you read is what is sent.
+                Text(Visible.escape(command.template), style = MaterialTheme.typography.bodySmall, maxLines = 4)
+            }
         }
 
         if (manifest.permissions.isNotEmpty()) {

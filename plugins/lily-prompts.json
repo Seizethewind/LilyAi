@@ -1,0 +1,29 @@
+{
+  "schema": 1,
+  "id": "lily.prompts.basic",
+  "name": "Prompt helpers",
+  "version": "1.0.0",
+  "description": "Command palette entries that ask Lily to explain, review, test or comment the selected code.",
+  "promptCommands": [
+    {
+      "name": "explain",
+      "description": "Explain the selection",
+      "template": "Explain this {language} code from {file} in plain words:\n\n{selection}"
+    },
+    {
+      "name": "find-bugs",
+      "description": "Look for bugs in the selection",
+      "template": "Look for bugs in this {language} code from {file}. List each problem and how to fix it:\n\n{selection}"
+    },
+    {
+      "name": "write-tests",
+      "description": "Write tests for the selection",
+      "template": "Write tests for this {language} code from {file}:\n\n{selection}"
+    },
+    {
+      "name": "add-comments",
+      "description": "Comment the selection",
+      "template": "Add short comments to this {language} code from {file}, only where the reason is not obvious:\n\n{selection}"
+    }
+  ]
+}
