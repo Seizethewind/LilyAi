@@ -10,6 +10,7 @@ import org.json.JSONObject
 /**
  * One worker the person (or Lily) created: what it is for, which router and model it uses, and the instructions that
  * shape its answers. [router] is 0 for the first router and 1 for the second. Several workers can share a role.
+ * [byLily] marks a worker Lily made herself: she may dismiss those, and never the ones the person made.
  */
 data class WorkerProfile(
     val id: String,
@@ -19,6 +20,7 @@ data class WorkerProfile(
     val model: String,
     val instructions: String,
     val enabled: Boolean = true,
+    val byLily: Boolean = false,
 )
 
 /** A starting point for a worker: a role and the instructions that fit it. */
@@ -78,7 +80,8 @@ object WorkerProfiles {
             arr.put(
                 JSONObject()
                     .put("id", p.id).put("name", p.name).put("role", p.role.name).put("router", p.router)
-                    .put("model", p.model).put("instructions", p.instructions).put("enabled", p.enabled),
+                    .put("model", p.model).put("instructions", p.instructions).put("enabled", p.enabled)
+                    .put("byLily", p.byLily),
             )
         }
     }.toString()
@@ -97,8 +100,9 @@ object WorkerProfiles {
                     model = o.optString("model", ""),
                     instructions = o.optString("instructions", ""),
                     enabled = o.optBoolean("enabled", true),
+                    byLily = o.optBoolean("byLily", false),
                 )
             }.getOrNull()
-        }
+        }.filter { it.role != WorkerType.TEAM }
     }
 }
