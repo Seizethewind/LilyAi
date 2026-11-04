@@ -10,7 +10,9 @@ import ai.lily.app.plugins.fillPrompt
 import ai.lily.app.remote.RemoteHub
 import ai.lily.app.remote.RemoteStore
 import ai.lily.app.settings.EncryptedSettingsStore
-import ai.lily.app.shell.AiScreen
+import ai.lily.app.shell.AiHost
+import ai.lily.app.shell.AiNav
+import ai.lily.app.shell.AiState
 import ai.lily.app.shell.AppBottomBar
 import ai.lily.app.shell.AppSidebar
 import ai.lily.app.shell.BrowseScreen
@@ -62,7 +64,7 @@ import java.io.File
 
 /**
  * The app. Six sections: Work (the Acode style code editor with Lily's coding and file workers), Chat (free talk with Lily, and the
- * queue of background tasks), Browse, Plugins, AI (routers, models and workers) and Settings. On a phone they sit in a bar along the
+ * queue of background tasks), Browse, Plugins, AI (Lily, workers, routers and models, behind a drawer) and Settings. On a phone they sit in a bar along the
  * bottom, within thumb's reach; on a wide screen they run down the left edge. Files live in the app's own `workspace` folder, or,
  * while a remote connection is open, in the local copy of that server folder.
  */
@@ -103,6 +105,7 @@ class EditorActivity : ComponentActivity() {
 
         // Which section shows, and the browser page that stays alive while another section is open.
         val nav = ShellNav()
+        val aiNav = AiNav()
         val browser = BrowseState(this).also { browse = it }
         val settingsStore = EncryptedSettingsStore(applicationContext)
 
@@ -119,6 +122,8 @@ class EditorActivity : ComponentActivity() {
         // plugin turned on a moment ago gives her its tools. The project folder lets her coding worker find relevant files beyond the open tabs.
         var lily: Lily? = null
         var builtFor = -1
+        // The AI section's state lives here, not in its screen, so the models it loaded are still there when the person comes back to it.
+        val ai = AiState(settingsStore, onChanged = { lily = null })
         fun currentLily(): Lily {
             val wanted = plugins.version
             return lily.takeIf { builtFor == wanted } ?: LilyFactory.create(
@@ -192,6 +197,8 @@ class EditorActivity : ComponentActivity() {
                     // While the keyboard is up the bottom bar steps aside, so typing never squeezes the screen between the two.
                     val keyboardUp = WindowInsets.ime.getBottom(LocalDensity.current) > 0
                     val onSelect: (Section) -> Unit = { section ->
+                        // Tapping AI pops its drawer out. Tapping it again while it is showing closes the drawer.
+                        if (section == Section.Ai) aiNav.menuOpen = nav.section != Section.Ai || !aiNav.menuOpen
                         nav.section = section
                         if (section == Section.Plugins) askTermuxPermission()
                     }
@@ -215,7 +222,7 @@ class EditorActivity : ComponentActivity() {
                             })
                             Section.Browse -> BrowseScreen(browser)
                             Section.Plugins -> PluginsScreen(plugins)
-                            Section.Ai -> AiScreen(settingsStore, onChanged = { lily = null })
+                            Section.Ai -> AiHost(ai, aiNav)
                             Section.Settings -> SettingsScreen(this@EditorActivity, lifecycleScope, onSaved = { lily = null })
                         }
                     }
