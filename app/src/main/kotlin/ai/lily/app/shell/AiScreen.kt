@@ -12,6 +12,7 @@ import ai.lily.app.ui.ConfirmDialog
 import ai.lily.app.ui.EmptyState
 import ai.lily.app.ui.Hairline
 import ai.lily.app.ui.LilyButton
+import ai.lily.app.ui.LilyIconButton
 import ai.lily.app.ui.LilySheet
 import ai.lily.app.ui.LilySwitch
 import ai.lily.app.ui.LilyTextField
@@ -19,7 +20,6 @@ import ai.lily.app.ui.LilyUi
 import ai.lily.app.ui.ListRow
 import ai.lily.app.ui.ScreenFrame
 import ai.lily.app.ui.ScreenHeader
-import ai.lily.app.ui.SectionTitle
 import ai.lily.app.ui.StatusPill
 import ai.lily.app.ui.Tone
 import ai.lily.app.workers.WorkerProfile
@@ -32,6 +32,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ExperimentalLayoutApi
 import androidx.compose.foundation.layout.FlowRow
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.RowScope
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
@@ -39,6 +40,8 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -60,6 +63,7 @@ import java.util.UUID
 /**
  * What the AI section shows and changes: the two routers, the models each one offers, and the workers. Every change is saved
  * to the encrypted store at once, and [onChanged] tells the app to rebuild Lily so she uses it from her next answer.
+ * The app holds one of these, so the models already loaded are still there after the person leaves the AI tab.
  */
 class AiState(private val store: EncryptedSettingsStore, private val onChanged: () -> Unit) {
     var settings by mutableStateOf(store.load())
@@ -141,52 +145,56 @@ private val CreatableRoles = WorkerType.values().filter { it != WorkerType.TEAM 
 
 private fun roleLabel(role: WorkerType): String = role.name.lowercase().replaceFirstChar { it.uppercase() }
 
-/** The AI section: routers and models at the top, then the workers Lily can use. */
+/**
+ * The Workers page and the Router config page of the AI section ([page] says which). [onMenu] opens the AI drawer from the
+ * header; it is null when the drawer is always on screen.
+ */
 @Composable
-fun AiScreen(store: EncryptedSettingsStore, onChanged: () -> Unit, modifier: Modifier = Modifier) {
-    val state = remember { AiState(store, onChanged) }
+fun AiScreen(state: AiState, page: AiPage, onMenu: (() -> Unit)?, modifier: Modifier = Modifier) {
     val scope = rememberCoroutineScope()
     var editing by remember { mutableStateOf<WorkerProfile?>(null) }
     var creating by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf<String?>(null) }
+    val menu: @Composable RowScope.() -> Unit = { if (onMenu != null) LilyIconButton(Icons.Filled.Menu, "Open AI menu", onMenu) }
 
     ScreenFrame(modifier) {
         LazyColumn(Modifier.fillMaxSize()) {
-            item { ScreenHeader("AI", subtitle = "Routers choose the models. Workers do the jobs.") }
-            item { SectionTitle("Routers", hint = "The self-hosted endpoints Lily sends her questions to.") }
-            item { RouterBlock(0, state, scope) }
-            item { Hairline(Modifier.padding(horizontal = 20.dp)) }
-            item { RouterBlock(1, state, scope) }
-            item {
-                SectionTitle("Workers", hint = "Each one has its own role, model and instructions.") {
-                    Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            if (page == AiPage.Routers) {
+                item { ScreenHeader(page.label, subtitle = "The self-hosted endpoints Lily sends her questions to.", actions = menu) }
+                item { RouterBlock(0, state, scope) }
+                item { Hairline(Modifier.padding(horizontal = 20.dp)) }
+                item { RouterBlock(1, state, scope) }
+            } else {
+                item { ScreenHeader(page.label, subtitle = "Each one has its own role, model and instructions.", actions = menu) }
+                item {
+                    Row(Modifier.padding(horizontal = 20.dp, vertical = 8.dp), horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                         LilyButton("Create several", onClick = { creating = true }, kind = ButtonKind.Quiet)
                         LilyButton("Add", onClick = { editing = WorkerProfile(UUID.randomUUID().toString(), "", WorkerType.GENERAL, 0, "", "") }, kind = ButtonKind.Tonal)
                     }
                 }
-            }
-            note?.let { message ->
-                item {
-                    Banner(message, Tone.Pad, Modifier.padding(horizontal = 20.dp, vertical = 8.dp), actionLabel = "Dismiss", onAction = { note = null })
+                note?.let { message ->
+                    item {
+                        Banner(message, Tone.Pad, Modifier.padding(horizontal = 20.dp, vertical = 8.dp), actionLabel = "Dismiss", onAction = { note = null })
+                    }
                 }
-            }
-            if (state.settings.workers.isEmpty()) {
-                item {
-                    EmptyState(
-                        title = "No workers yet",
-                        message = "Lily's built-in workers answer until you add your own. Start from a template, or make several at once.",
-                    )
+                if (state.settings.workers.isEmpty()) {
+                    item {
+                        EmptyState(
+                            title = "No workers yet",
+                            message = "Lily's built-in workers answer until you add your own. Start from a template, or make several at once.",
+                        )
+                    }
                 }
-            }
-            items(state.settings.workers, key = { it.id }) { p ->
-                Column {
-                    ListRow(
-                        title = p.name.ifBlank { "(no name)" },
-                        subtitle = "${roleLabel(p.role)} · Router ${p.router + 1} · ${p.model.ifBlank { "default model" }}",
-                        onClick = { editing = p },
-                        trailing = { LilySwitch(p.enabled, { on -> state.upsert(p.copy(enabled = on)) }) },
-                    )
-                    Hairline(Modifier.padding(horizontal = 20.dp))
+                items(state.settings.workers, key = { it.id }) { p ->
+                    Column {
+                        ListRow(
+                            title = p.name.ifBlank { "(no name)" },
+                            subtitle = "${roleLabel(p.role)} · Router ${p.router + 1} · ${p.model.ifBlank { "default model" }}",
+                            onClick = { editing = p },
+                            trailing = { LilySwitch(p.enabled, { on -> state.upsert(p.copy(enabled = on)) }) },
+                        )
+                        Hairline(Modifier.padding(horizontal = 20.dp))
+                    }
                 }
             }
             item { androidx.compose.foundation.layout.Spacer(Modifier.padding(bottom = 24.dp)) }
@@ -290,7 +298,7 @@ private fun WorkerSheet(start: WorkerProfile, state: AiState, onDismiss: () -> U
                 onValueChange = { model = it },
                 label = "Model",
                 placeholder = "Empty uses the router's default",
-                helper = if (offered.isEmpty()) "Load this router's models in the Routers part to pick one from a list." else null,
+                helper = if (offered.isEmpty()) "Load this router's models on the Router config page to pick one from a list." else null,
                 mono = true,
             )
             if (matches.isNotEmpty()) {
