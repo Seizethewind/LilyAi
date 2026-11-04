@@ -8,10 +8,13 @@ import ai.lily.app.plugins.PromptGate
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.heightIn
+import androidx.compose.foundation.layout.navigationBarsPadding
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.layout.statusBarsPadding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
@@ -35,16 +38,10 @@ import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** Whether the plugin manager is open. The "Plugins" command in the palette sets it. */
-class PluginUi {
-    var open by mutableStateOf(false)
-}
-
-/** The plugin manager, and the "run this command?" question a plugin tool asks before it does anything. */
+/** The "run this command?" question a plugin tool asks before it does anything. It can appear over any section. */
 @Composable
-fun PluginDialogs(services: PluginServices, ui: PluginUi) {
+fun PluginDialogs(services: PluginServices) {
     services.gate.pending?.let { ConfirmRunDialog(it, services.gate) }
-    if (ui.open) PluginManager(services) { ui.open = false }
 }
 
 @Composable
@@ -69,33 +66,32 @@ private fun ConfirmRunDialog(pending: PromptGate.Pending, gate: PromptGate) {
     )
 }
 
+/** The Plugins section: every installed plugin with its switches, and a way to add one. */
 @Composable
-private fun PluginManager(services: PluginServices, onClose: () -> Unit) {
+fun PluginsScreen(services: PluginServices, modifier: Modifier = Modifier) {
     val version = services.version
     val plugins = remember(version) { services.registry.list() }
     var adding by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf<String?>(null) }
 
-    AlertDialog(
-        onDismissRequest = onClose,
-        title = { Text("Plugins") },
-        text = {
-            LazyColumn(Modifier.fillMaxWidth()) {
-                note?.let { message ->
-                    item {
-                        Text(message, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
-                        Spacer(Modifier.height(8.dp))
-                    }
-                }
-                if (plugins.isEmpty()) item { Text("No plugins installed.") }
-                items(plugins, key = { p -> p.manifest.id }) { plugin ->
-                    PluginCard(plugin, services) { message -> note = message }
-                }
+    LazyColumn(modifier.fillMaxSize().statusBarsPadding().navigationBarsPadding().padding(horizontal = 16.dp)) {
+        item {
+            Row(Modifier.fillMaxWidth().padding(vertical = 12.dp), verticalAlignment = Alignment.CenterVertically) {
+                Text("Plugins", style = MaterialTheme.typography.headlineSmall, modifier = Modifier.weight(1f))
+                TextButton(onClick = { adding = true }) { Text("Add from JSON") }
             }
-        },
-        confirmButton = { TextButton(onClick = onClose) { Text("Done") } },
-        dismissButton = { TextButton(onClick = { adding = true }) { Text("Add from JSON") } },
-    )
+        }
+        note?.let { message ->
+            item {
+                Text(message, color = MaterialTheme.colorScheme.primary, style = MaterialTheme.typography.bodySmall)
+                Spacer(Modifier.height(8.dp))
+            }
+        }
+        if (plugins.isEmpty()) item { Text("No plugins installed.") }
+        items(plugins, key = { p -> p.manifest.id }) { plugin ->
+            PluginCard(plugin, services) { message -> note = message }
+        }
+    }
     if (adding) {
         AddPluginDialog(services, onDismiss = { adding = false }) { message ->
             note = message
