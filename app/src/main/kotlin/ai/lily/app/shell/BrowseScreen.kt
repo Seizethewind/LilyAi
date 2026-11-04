@@ -1,13 +1,12 @@
 package ai.lily.app.shell
 
+import ai.lily.app.ui.ButtonKind
 import ai.lily.app.ui.ChoiceChip
 import ai.lily.app.ui.EmptyState
-import ai.lily.app.ui.Hairline
 import ai.lily.app.ui.LilyButton
 import ai.lily.app.ui.LilyIconButton
 import ai.lily.app.ui.LilyUi
 import ai.lily.app.ui.ScreenFrame
-import ai.lily.app.ui.ButtonKind
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
@@ -59,11 +58,14 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 
-/** The browser's page, kept alive while the person visits another section. [context] must be the activity. */
+/**
+ * The browser's page, kept alive while the person visits another section. [context] must be the activity.
+ * The load state has its own names (loadProgress, not progress) because inside the WebView setup a plain `progress` would mean WebView.progress.
+ */
 class BrowseState(context: Context) {
     var address by mutableStateOf("")
     var loading by mutableStateOf(false)
-    var progress by mutableStateOf(0f)
+    var loadProgress by mutableStateOf(0f)
     var failed by mutableStateOf(false)
     var canBack by mutableStateOf(false)
     var canForward by mutableStateOf(false)
@@ -77,17 +79,17 @@ class BrowseState(context: Context) {
                 loading = true
                 failed = false
                 if (url != null) address = url
-                sync(view)
+                syncHistory(view)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 loading = false
                 if (url != null) address = url
-                sync(view)
+                syncHistory(view)
             }
 
             override fun doUpdateVisitedHistory(view: WebView?, url: String?, isReload: Boolean) {
-                sync(view)
+                syncHistory(view)
             }
 
             override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
@@ -99,12 +101,12 @@ class BrowseState(context: Context) {
         }
         webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
-                progress = newProgress / 100f
+                loadProgress = newProgress / 100f
             }
         }
     }
 
-    private fun sync(view: WebView?) {
+    private fun syncHistory(view: WebView?) {
         canBack = view?.canGoBack() == true
         canForward = view?.canGoForward() == true
     }
@@ -146,8 +148,8 @@ fun BrowseScreen(state: BrowseState, modifier: Modifier = Modifier) {
 
     ScreenFrame(modifier) {
         Row(Modifier.fillMaxWidth().padding(horizontal = 4.dp, vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-            LilyIconButton(Icons.Filled.ArrowBack, "Back", onClick = { state.web.goBack() }, enabled = state.canBack, tint = s.onBackground)
-            LilyIconButton(Icons.Filled.ArrowForward, "Forward", onClick = { state.web.goForward() }, enabled = state.canForward, tint = s.onBackground)
+            LilyIconButton(Icons.Filled.ArrowBack, "Back", onClick = { state.web.goBack() }, enabled = state.canBack)
+            LilyIconButton(Icons.Filled.ArrowForward, "Forward", onClick = { state.web.goForward() }, enabled = state.canForward)
             Row(
                 Modifier
                     .weight(1f)
@@ -187,12 +189,11 @@ fun BrowseScreen(state: BrowseState, modifier: Modifier = Modifier) {
                 if (state.loading) "Stop loading" else "Reload",
                 onClick = { state.reloadOrStop() },
                 enabled = state.address.isNotEmpty(),
-                tint = s.onBackground,
             )
         }
         // A hairline that fills with petal colour as the page loads.
         Box(Modifier.fillMaxWidth().height(2.dp).background(c.hairline)) {
-            if (state.loading) Box(Modifier.fillMaxWidth(state.progress.coerceIn(0.05f, 1f)).height(2.dp).background(s.primary))
+            if (state.loading) Box(Modifier.fillMaxWidth(state.loadProgress.coerceIn(0.05f, 1f)).height(2.dp).background(s.primary))
         }
         Box(Modifier.weight(1f).fillMaxWidth()) {
             AndroidView(

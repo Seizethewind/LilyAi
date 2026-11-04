@@ -1,6 +1,8 @@
 package ai.lily.app.shell
 
+import ai.lily.app.ui.Banner
 import ai.lily.app.ui.ButtonKind
+import ai.lily.app.ui.ChoiceChip
 import ai.lily.app.ui.EmptyState
 import ai.lily.app.ui.Hairline
 import ai.lily.app.ui.LilyBloom
@@ -14,20 +16,15 @@ import ai.lily.app.ui.SegmentedTabs
 import ai.lily.app.ui.StatusDot
 import ai.lily.app.ui.TabSpec
 import ai.lily.app.ui.Tone
-import ai.lily.app.ui.Banner
-import ai.lily.app.ui.ChoiceChip
 import ai.lily.app.ui.ink
 import androidx.compose.foundation.background
-import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.ColumnScope
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
-import androidx.compose.foundation.layout.Spacer
-import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
-import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.widthIn
@@ -35,7 +32,6 @@ import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.lazy.itemsIndexed
 import androidx.compose.foundation.lazy.rememberLazyListState
-import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.foundation.text.selection.SelectionContainer
 import androidx.compose.material.icons.Icons
@@ -164,7 +160,7 @@ private fun ColumnScope.ChatPane(chat: ChatState) {
         LazyColumn(
             Modifier.weight(1f).fillMaxWidth(),
             state = list,
-            contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 20.dp, vertical = 16.dp),
+            contentPadding = PaddingValues(horizontal = 20.dp, vertical = 16.dp),
             verticalArrangement = Arrangement.spacedBy(16.dp),
         ) {
             itemsIndexed(chat.messages) { _, m -> MessageRow(m, onRetry = { chat.retryLast() }) }
@@ -178,10 +174,17 @@ private fun ColumnScope.ChatPane(chat: ChatState) {
             }
         }
     }
-    LilyComposer(text, { text = it }, hint = "Message Lily", sendLabel = "Send", enabled = !chat.busy) {
-        chat.send(text)
-        text = ""
-    }
+    LilyComposer(
+        value = text,
+        onValueChange = { text = it },
+        hint = "Message Lily",
+        sendLabel = "Send",
+        onSend = {
+            chat.send(text)
+            text = ""
+        },
+        enabled = !chat.busy,
+    )
 }
 
 /** You: a petal-tinted bubble on the right. Lily: plain text on the left under her mark, selectable so it can be copied. */
@@ -226,15 +229,23 @@ private fun ColumnScope.TaskPane(queue: TaskQueue, onReview: () -> Unit) {
     } else {
         LazyColumn(Modifier.weight(1f).fillMaxWidth()) {
             items(queue.tasks, key = { it.id }) { task ->
-                TaskRow(task, queue, onReview)
-                Hairline(Modifier.padding(horizontal = 20.dp))
+                Column {
+                    TaskRow(task, queue, onReview)
+                    Hairline(Modifier.padding(horizontal = 20.dp))
+                }
             }
         }
     }
-    LilyComposer(text, { text = it }, hint = "What should Lily do next?", sendLabel = "Add task") {
-        queue.add(text)
-        text = ""
-    }
+    LilyComposer(
+        value = text,
+        onValueChange = { text = it },
+        hint = "What should Lily do next?",
+        sendLabel = "Add task",
+        onSend = {
+            queue.add(text)
+            text = ""
+        },
+    )
 }
 
 /** One queued task: its state on the left, its words and result in the middle, and the actions it is waiting for underneath. */
