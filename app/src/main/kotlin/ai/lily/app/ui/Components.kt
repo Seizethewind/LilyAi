@@ -59,7 +59,11 @@ import androidx.compose.ui.graphics.SolidColor
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.graphics.lerp
 import androidx.compose.ui.graphics.vector.ImageVector
+import androidx.compose.ui.semantics.LiveRegionMode
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.liveRegion
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.ImeAction
 import androidx.compose.ui.text.input.KeyboardCapitalization
@@ -274,7 +278,8 @@ fun LilyTextField(
             BasicTextField(
                 value = value,
                 onValueChange = onValueChange,
-                modifier = Modifier.weight(1f).padding(vertical = 14.dp),
+                // The label is a separate Text above the box, so a screen reader needs it named on the field itself.
+                modifier = Modifier.weight(1f).padding(vertical = 14.dp).semantics { contentDescription = label },
                 textStyle = textStyle,
                 singleLine = singleLine,
                 minLines = minLines,
@@ -347,7 +352,8 @@ fun LilyComposer(
         BasicTextField(
             value = value,
             onValueChange = onValueChange,
-            modifier = Modifier.weight(1f).padding(vertical = 10.dp),
+            // 12dp makes one line (24dp) as tall as the 48dp send button, so the text sits level with it.
+            modifier = Modifier.weight(1f).padding(vertical = 12.dp),
             textStyle = style,
             maxLines = 6,
             cursorBrush = SolidColor(s.primary),
@@ -360,9 +366,10 @@ fun LilyComposer(
             },
         )
         Spacer(Modifier.width(8.dp))
+        // 48dp, the same as LilyIconButton, so every round control in the app is one size.
         Box(
             Modifier
-                .size(44.dp)
+                .size(48.dp)
                 .clip(CircleShape)
                 .background(if (canSend) s.primary else c.sunken)
                 .clickable(enabled = canSend, role = Role.Button, onClickLabel = sendLabel, onClick = onSend),
@@ -535,7 +542,13 @@ fun Banner(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         StatusDot(tone, Modifier.padding(end = 12.dp), size = 8)
-        Text(text, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.weight(1f))
+        // A live region, so a screen reader announces "Saved" or an error when it appears instead of staying silent.
+        Text(
+            text,
+            style = MaterialTheme.typography.bodyMedium,
+            color = MaterialTheme.colorScheme.onBackground,
+            modifier = Modifier.weight(1f).semantics { liveRegion = LiveRegionMode.Polite },
+        )
         if (actionLabel != null && onAction != null) {
             Box(
                 Modifier.heightIn(min = 48.dp).clip(CircleShape).clickable(role = Role.Button, onClick = onAction).padding(horizontal = 12.dp),
