@@ -11,5 +11,6 @@ object WorkerModels {
         WorkerType.GIT -> "auto:fast"
         WorkerType.FILE -> "auto:fast"
         WorkerType.GENERAL -> "auto"
+        WorkerType.TEST -> "auto:fast"
     }
 }
