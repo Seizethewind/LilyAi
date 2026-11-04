@@ -12,5 +12,6 @@ object WorkerModels {
         WorkerType.FILE -> "auto:fast"
         WorkerType.GENERAL -> "auto"
         WorkerType.TEST -> "auto:fast"
+        WorkerType.TEAM -> "auto:smart"
     }
 }
