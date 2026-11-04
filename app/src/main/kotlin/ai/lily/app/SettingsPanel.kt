@@ -29,7 +29,8 @@ import kotlinx.coroutines.launch
 import kotlin.coroutines.cancellation.CancellationException
 
 /**
- * The settings form: router, Turso (Journal, Proven facts and Knowledge), embeddings, Pandastack and check commands.
+ * The settings form: Turso (Journal, Proven facts and Knowledge), embeddings, Pandastack and check commands. Routers, models and
+ * workers are in the AI section; saving here keeps them exactly as they are.
  * Secrets (keys and tokens) sit in password fields and are saved only in the encrypted store.
  * [root] is the inflated activity_settings layout; [onSaved] runs after a successful save.
  */
@@ -40,11 +41,9 @@ class SettingsPanel(
     private val onSaved: () -> Unit,
 ) {
     private val store = EncryptedSettingsStore(activity)
-    private var current: AppSettings = store.load()
 
     fun bind() {
-        field(R.id.router_url).setText(current.router.baseUrl)
-        field(R.id.router_key).setText(current.router.apiKey)
+        val current = store.load()
         field(R.id.journal_url).setText(current.journalDb?.url.orEmpty())
         field(R.id.journal_token).setText(current.journalDb?.authToken.orEmpty())
         field(R.id.facts_url).setText(current.factsDb?.url.orEmpty())
@@ -67,7 +66,6 @@ class SettingsPanel(
                 show("Not saved", problem)
             } else {
                 store.save(settings)
-                current = settings
                 onSaved()
                 show("Saved", "Your settings are saved. Lily uses them from her next answer.")
             }
@@ -111,11 +109,8 @@ class SettingsPanel(
             )
         }
         val commands = field(R.id.verify_commands).text.toString().lines().map { it.trim() }.filter { it.isNotEmpty() }
-        return current.copy(
-            router = current.router.copy(
-                baseUrl = value(R.id.router_url).ifEmpty { current.router.baseUrl },
-                apiKey = value(R.id.router_key),
-            ),
+        // Read the store again so routers and workers edited in the AI section are never overwritten.
+        return store.load().copy(
             journalDb = journal,
             factsDb = facts,
             knowledgeDb = knowledge,
