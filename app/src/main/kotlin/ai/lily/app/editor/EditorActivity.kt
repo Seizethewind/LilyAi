@@ -3,6 +3,7 @@ package ai.lily.app.editor
 import ai.lily.app.LilyFactory
 import ai.lily.app.SettingsScreen
 import ai.lily.app.core.Lily
+import ai.lily.app.core.TaskResult
 import ai.lily.app.lib.editor.DraftStore
 import ai.lily.app.plugins.PluginServices
 import ai.lily.app.remote.RemoteHub
@@ -12,8 +13,11 @@ import ai.lily.app.shell.AiScreen
 import ai.lily.app.shell.AppSidebar
 import ai.lily.app.shell.BrowseScreen
 import ai.lily.app.shell.BrowseState
+import ai.lily.app.shell.ChatScreen
+import ai.lily.app.shell.ChatState
 import ai.lily.app.shell.Section
 import ai.lily.app.shell.ShellNav
+import ai.lily.app.shell.TaskQueue
 import android.content.pm.PackageManager
 import android.net.Uri
 import android.os.Bundle
@@ -41,9 +45,9 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * The app. A permanent left sidebar switches between five sections: Work (the Acode style code editor with Lily's coding and file
- * workers), Browse, Plugins, AI (routers, models and workers) and Settings. Files live in the app's own `workspace` folder, or,
- * while a remote connection is open, in the local copy of that server folder.
+ * The app. A permanent left sidebar switches between six sections: Work (the Acode style code editor with Lily's coding and file
+ * workers), Browse, Plugins, AI (routers, models and workers), Chat (free talk with Lily, and the queue of background tasks) and
+ * Settings. Files live in the app's own `workspace` folder, or, while a remote connection is open, in the local copy of that server folder.
  */
 class EditorActivity : ComponentActivity() {
     private lateinit var state: EditorState
@@ -112,6 +116,19 @@ class EditorActivity : ComponentActivity() {
                 .joinToString("\n\n") { it.output.trim() }
         }
 
+        // Chat and the task queue ask Lily the same way. A queued task throws when she failed, so the queue stops and asks the person.
+        suspend fun askLily(text: String): List<TaskResult> = withContext(Dispatchers.Default) { currentLily().handle(text) }
+        val chat = ChatState(lifecycleScope) { text -> askLily(text).joinToString("\n\n") { it.output.trim() } }
+        val queue = TaskQueue(
+            lifecycleScope,
+            run = { text ->
+                val results = askLily(text)
+                results.firstOrNull { !it.success }?.let { failed -> error(failed.output) }
+                results.joinToString("\n\n") { it.output.trim() }
+            },
+            needsReview = { session.proposals.isNotEmpty() },
+        )
+
         // Extra entries in the command palette.
         val extraCommands = listOf(
             ExtraCommand("Ask Lily") { ui.ask = true; askTermuxPermission() },
@@ -128,10 +145,14 @@ class EditorActivity : ComponentActivity() {
                 BackHandler(enabled = nav.section != Section.Work) { nav.section = Section.Work }
                 CompositionLocalProvider(LocalWorkspaceOps provides ops) {
                     Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
-                        AppSidebar(nav, onSelect = { section ->
-                            nav.section = section
-                            if (section == Section.Plugins) askTermuxPermission()
-                        })
+                        AppSidebar(
+                            nav,
+                            onSelect = { section ->
+                                nav.section = section
+                                if (section == Section.Plugins) askTermuxPermission()
+                            },
+                            badge = { section -> if (section == Section.Chat) queue.needYou else 0 },
+                        )
                         Box(Modifier.weight(1f).fillMaxHeight()) {
                             when (nav.section) {
                                 Section.Work -> Box(Modifier.fillMaxSize()) {
@@ -145,6 +166,10 @@ class EditorActivity : ComponentActivity() {
                                 Section.Browse -> BrowseScreen(browser)
                                 Section.Plugins -> PluginsScreen(plugins)
                                 Section.Ai -> AiScreen(settingsStore, onChanged = { lily = null })
+                                Section.Chat -> ChatScreen(chat, queue, onReview = {
+                                    session.startReview()
+                                    nav.section = Section.Work
+                                })
                                 Section.Settings -> SettingsScreen(this@EditorActivity, lifecycleScope, onSaved = { lily = null })
                             }
                         }
