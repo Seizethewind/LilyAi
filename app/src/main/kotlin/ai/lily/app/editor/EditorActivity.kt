@@ -8,6 +8,7 @@ import ai.lily.app.plugins.PluginServices
 import ai.lily.app.remote.RemoteHub
 import ai.lily.app.remote.RemoteStore
 import ai.lily.app.settings.EncryptedSettingsStore
+import ai.lily.app.shell.AiScreen
 import ai.lily.app.shell.AppSidebar
 import ai.lily.app.shell.BrowseScreen
 import ai.lily.app.shell.BrowseState
@@ -40,9 +41,9 @@ import kotlinx.coroutines.withContext
 import java.io.File
 
 /**
- * The app. A permanent left sidebar switches between four sections: Work (the Acode style code editor with Lily's coding and file
- * workers), Browse, Plugins and Settings. Files live in the app's own `workspace` folder, or, while a remote connection is open,
- * in the local copy of that server folder.
+ * The app. A permanent left sidebar switches between five sections: Work (the Acode style code editor with Lily's coding and file
+ * workers), Browse, Plugins, AI (routers, models and workers) and Settings. Files live in the app's own `workspace` folder, or,
+ * while a remote connection is open, in the local copy of that server folder.
  */
 class EditorActivity : ComponentActivity() {
     private lateinit var state: EditorState
@@ -82,6 +83,7 @@ class EditorActivity : ComponentActivity() {
         // Which section shows, and the browser page that stays alive while another section is open.
         val nav = ShellNav()
         val browser = BrowseState(this).also { browse = it }
+        val settingsStore = EncryptedSettingsStore(applicationContext)
 
         // Termux's run-command permission is a runtime one: declaring it is not enough, Android must be asked.
         val termuxPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
@@ -92,14 +94,14 @@ class EditorActivity : ComponentActivity() {
             }
         }
 
-        // Lily is built the first time she is asked, and again when the person changes a plugin or saves settings, so a plugin
-        // turned on a moment ago gives her its tools. The project folder lets her coding worker find relevant files beyond the open tabs.
+        // Lily is built the first time she is asked, and again when the person changes a plugin, a worker or the settings, so a
+        // plugin turned on a moment ago gives her its tools. The project folder lets her coding worker find relevant files beyond the open tabs.
         var lily: Lily? = null
         var builtFor = -1
         fun currentLily(): Lily {
             val wanted = plugins.version
             return lily.takeIf { builtFor == wanted } ?: LilyFactory.create(
-                EncryptedSettingsStore(applicationContext).load(), session.bridge, root, plugins.host,
+                settingsStore.load(), session.bridge, root, plugins.host,
             ).also {
                 lily = it
                 builtFor = wanted
@@ -142,6 +144,7 @@ class EditorActivity : ComponentActivity() {
                                 }
                                 Section.Browse -> BrowseScreen(browser)
                                 Section.Plugins -> PluginsScreen(plugins)
+                                Section.Ai -> AiScreen(settingsStore, onChanged = { lily = null })
                                 Section.Settings -> SettingsScreen(this@EditorActivity, lifecycleScope, onSaved = { lily = null })
                             }
                         }
