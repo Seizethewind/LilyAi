@@ -25,10 +25,12 @@ import ai.lily.app.workers.CodingWorker
 import ai.lily.app.workers.FileWorker
 import ai.lily.app.workers.GeneralWorker
 import ai.lily.app.workers.GitWorker
+import ai.lily.app.workers.ManagerWorker
 import ai.lily.app.workers.ModelWorker
 import ai.lily.app.workers.ProfileGateway
 import ai.lily.app.workers.ResearchWorker
 import ai.lily.app.workers.Worker
+import ai.lily.app.workers.WorkerRoster
 import java.io.File
 
 /** Wires everything together from the user's settings. */
@@ -38,6 +40,7 @@ object LilyFactory {
      * [workspaceRoot] is the project folder; with it the coding worker can find relevant files beyond the open tabs.
      * [plugins] adds the tools of every plugin that is on and allowed (for example the optional Termux plugin). The app's
      * own tools are registered first, so a plugin can never replace one of them.
+     * [roster] is the list of created workers that Lily's own TEAM worker reads and changes. Without it there is no TEAM worker.
      * Workers the person created (settings.workers) take over their role from the built-in worker, each with its own router,
      * model and instructions. A role with no created workers keeps the built-in one.
      */
@@ -46,6 +49,7 @@ object LilyFactory {
         editor: EditorBridge? = null,
         workspaceRoot: File? = null,
         plugins: PluginHost? = null,
+        roster: WorkerRoster? = null,
     ): Lily {
         val gateway = RouterModelGateway(settings.router)
         val second: ModelGateway? = settings.router2?.let { RouterModelGateway(it) }
@@ -66,11 +70,14 @@ object LilyFactory {
             WorkerType.FILE -> FileWorker(g, tools, editor)
             WorkerType.GENERAL -> GeneralWorker(g, tools)
             WorkerType.TEST -> ModelWorker(WorkerType.TEST, g, tools)
+            WorkerType.TEAM -> ManagerWorker(g, tools, checkNotNull(roster) { "The TEAM worker needs a roster" })
         }
 
         val created = settings.workers.filter { it.enabled }.groupBy { it.role }
         val manager = WorkerManager().apply {
             for (type in WorkerType.values()) {
+                // Lily's own TEAM role manages the roster, so without one there is nothing for it to do.
+                if (type == WorkerType.TEAM && roster == null) continue
                 val profiles = created[type].orEmpty()
                 if (profiles.isEmpty()) {
                     // Testers exist only when the person makes them; every other role always has a built-in worker.
