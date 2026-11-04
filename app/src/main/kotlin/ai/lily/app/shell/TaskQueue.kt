@@ -32,6 +32,12 @@ class TaskQueue(
     val tasks = mutableStateListOf<UserTask>()
     val needYou: Int get() = tasks.count { it.state == TaskState.NeedsYou }
 
+    /** True while anything is queued, running or waiting for the person: the app must be kept alive. */
+    val busy: Boolean get() = tasks.any { it.state != TaskState.Done }
+
+    /** What would be lost if the app were killed now. These are saved and queued again at the next start. */
+    val unfinished: List<String> get() = tasks.filter { it.state != TaskState.Done }.map { it.text }
+
     private var nextId = 1
     private var runner: Job? = null
 

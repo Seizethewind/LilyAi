@@ -18,8 +18,12 @@ import ai.lily.app.shell.ChatState
 import ai.lily.app.shell.Section
 import ai.lily.app.shell.ShellNav
 import ai.lily.app.shell.TaskQueue
+import ai.lily.app.shell.TaskService
+import ai.lily.app.shell.TaskStore
+import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import android.provider.OpenableColumns
 import androidx.activity.ComponentActivity
@@ -36,6 +40,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.darkColorScheme
 import androidx.compose.material3.lightColorScheme
 import androidx.compose.runtime.CompositionLocalProvider
+import androidx.compose.runtime.snapshotFlow
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.lifecycle.lifecycleScope
@@ -129,6 +134,30 @@ class EditorActivity : ComponentActivity() {
             needsReview = { session.proposals.isNotEmpty() },
         )
 
+        // Background running. While the queue has work, a foreground service keeps the process alive and its notification shows how
+        // many tasks need the person. Unfinished tasks are saved, so a killed app queues them again at the next start.
+        val store = TaskStore(File(filesDir, "tasks.json"))
+        store.load().forEach { queue.add(it) }
+        val notifyPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
+        lifecycleScope.launch {
+            snapshotFlow { queue.busy }.collect { busy ->
+                if (busy) {
+                    if (Build.VERSION.SDK_INT >= 33 && checkSelfPermission(Manifest.permission.POST_NOTIFICATIONS) != PackageManager.PERMISSION_GRANTED) {
+                        notifyPermission.launch(Manifest.permission.POST_NOTIFICATIONS)
+                    }
+                    TaskService.start(this@EditorActivity)
+                } else {
+                    TaskService.stop(this@EditorActivity)
+                }
+            }
+        }
+        lifecycleScope.launch {
+            snapshotFlow { queue.needYou }.collect { need -> if (queue.busy) TaskService.update(this@EditorActivity, need) }
+        }
+        lifecycleScope.launch {
+            snapshotFlow { queue.unfinished }.collect { texts -> withContext(Dispatchers.IO) { store.save(texts) } }
+        }
+
         // Extra entries in the command palette.
         val extraCommands = listOf(
             ExtraCommand("Ask Lily") { ui.ask = true; askTermuxPermission() },
@@ -141,8 +170,11 @@ class EditorActivity : ComponentActivity() {
 
         setContent {
             MaterialTheme(colorScheme = if (state.theme.dark) darkColorScheme() else lightColorScheme()) {
-                // Back from any other section goes to Work first.
-                BackHandler(enabled = nav.section != Section.Work) { nav.section = Section.Work }
+                // Back from any other section goes to Work first. From Work, while tasks are running, it sends the app to the
+                // background instead of closing it, because closing it would stop them.
+                BackHandler(enabled = nav.section != Section.Work || queue.busy) {
+                    if (nav.section != Section.Work) nav.section = Section.Work else this@EditorActivity.moveTaskToBack(true)
+                }
                 CompositionLocalProvider(LocalWorkspaceOps provides ops) {
                     Row(Modifier.fillMaxSize().background(MaterialTheme.colorScheme.background)) {
                         AppSidebar(
@@ -210,10 +242,12 @@ class EditorActivity : ComponentActivity() {
         }
     }
 
-    /** Leaving the editor for good closes the server connection. Being rebuilt (connect, disconnect, rotate) does not. */
+    /** Leaving the editor for good closes the server connection. Being rebuilt (connect, disconnect) does not. */
     override fun onDestroy() {
         super.onDestroy()
         browse?.web?.destroy()
+        // The queue dies with this screen, so the service has nothing left to keep alive. The saved tasks start again next time.
+        TaskService.stop(this)
         if (isFinishing) RemoteHub.close()
     }
 

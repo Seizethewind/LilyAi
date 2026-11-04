@@ -2,6 +2,10 @@
 <manifest xmlns:android="http://schemas.android.com/apk/res/android">
 
     <uses-permission android:name="android.permission.INTERNET" />
+    <!-- Keeps queued tasks running while the app is not on screen (shell/TaskService). POST_NOTIFICATIONS lets its notification show on Android 13+. -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Used only by the optional Termux plugin (assets/plugins/termux.json). Android needs this declared at build
          time; it does nothing unless that plugin is installed, turned on and allowed. -->
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
@@ -34,6 +38,10 @@
             android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize|keyboardHidden|keyboard|uiMode"
             android:exported="false"
             android:windowSoftInputMode="adjustResize" />
+        <service
+            android:name=".shell.TaskService"
+            android:exported="false"
+            android:foregroundServiceType="dataSync" />
         <!-- Receives the answer a plugin's target app sends back. Not exported: only Lily's own PendingIntent reaches it. -->
         <receiver
             android:name=".plugins.PluginResultReceiver"
