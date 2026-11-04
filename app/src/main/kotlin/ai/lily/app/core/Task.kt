@@ -1,6 +1,6 @@
 package ai.lily.app.core
 
-enum class WorkerType { CODING, RESEARCH, BUILD, GIT, FILE, GENERAL }
+enum class WorkerType { CODING, RESEARCH, BUILD, GIT, FILE, GENERAL, TEST }
 
 data class Task(
     val id: String,
