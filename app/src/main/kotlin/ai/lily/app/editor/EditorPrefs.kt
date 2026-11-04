@@ -4,8 +4,11 @@ import ai.lily.app.lib.editor.EditorSettings
 import ai.lily.app.lib.editor.LineSpacing
 import android.content.Context
 
-/** The editor's settings and the list of open tabs, kept in the app's private preferences. */
-class EditorPrefs(context: Context) {
+/**
+ * The editor's settings and the list of open tabs, kept in the app's private preferences. The open tabs are remembered per
+ * [workspace] (empty for the phone's own workspace, the connection id for a remote one), so one workspace never reopens another's tabs.
+ */
+class EditorPrefs(context: Context, private val workspace: String = "") {
     private val sp = context.getSharedPreferences("editor_prefs", Context.MODE_PRIVATE)
 
     var fontSize: Int
@@ -43,14 +46,14 @@ class EditorPrefs(context: Context) {
 
     /** The paths of the tabs that were open, in order, and which one was active. */
     fun loadSession(): Pair<List<String>, String?> {
-        val paths = (sp.getString("sessionPaths", "") ?: "").split('\n').filter { it.isNotEmpty() }
-        return Pair(paths, sp.getString("sessionActive", null))
+        val paths = (sp.getString("sessionPaths$workspace", "") ?: "").split('\n').filter { it.isNotEmpty() }
+        return Pair(paths, sp.getString("sessionActive$workspace", null))
     }
 
     fun saveSession(paths: List<String>, active: String?) {
         sp.edit()
-            .putString("sessionPaths", paths.filter { '\n' !in it }.joinToString("\n"))
-            .putString("sessionActive", active)
+            .putString("sessionPaths$workspace", paths.filter { '\n' !in it }.joinToString("\n"))
+            .putString("sessionActive$workspace", active)
             .apply()
     }
 
