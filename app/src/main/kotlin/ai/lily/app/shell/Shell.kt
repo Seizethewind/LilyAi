@@ -16,6 +16,7 @@ import androidx.compose.material.icons.filled.Build
 import androidx.compose.material.icons.filled.Edit
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Settings
+import androidx.compose.material.icons.filled.Star
 import androidx.compose.material3.Icon
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
@@ -33,11 +34,12 @@ import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 
-/** The four sections of the app. Each is its own screen, not a dialog. */
+/** The sections of the app. Each is its own screen, not a dialog. */
 enum class Section(val label: String, val icon: ImageVector) {
     Work("Work", Icons.Filled.Edit),
     Browse("Browse", Icons.Filled.Search),
     Plugins("Plugins", Icons.Filled.Build),
+    Ai("AI", Icons.Filled.Star),
     Settings("Settings", Icons.Filled.Settings),
 }
 
@@ -46,7 +48,7 @@ class ShellNav {
     var section by mutableStateOf(Section.Work)
 }
 
-/** The permanent left bar: the four sections top to bottom, the current one highlighted. */
+/** The permanent left bar: the sections top to bottom, the current one highlighted. */
 @Composable
 fun AppSidebar(nav: ShellNav, onSelect: (Section) -> Unit, modifier: Modifier = Modifier) {
     Column(
