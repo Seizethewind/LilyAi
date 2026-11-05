@@ -18,7 +18,6 @@ object ManifestParser {
     const val SCHEMA = 1
     const val OWN_PACKAGE = "ai.lily.app"
     const val KIND_ANDROID_SERVICE = "android-service"
-    const val KIND_HTTP = "http"
 
     /** {name} inside text. Names are lowercase; an unknown name is an error, never passed through. */
     val PLACEHOLDER = Regex("\\{([a-z][a-z0-9_]*)\\}")
@@ -42,13 +41,6 @@ object ManifestParser {
     private const val MIN_TIMEOUT_MS = 1_000L
     private const val MAX_TIMEOUT_MS = 300_000L
     private const val MAX_ERRORS = 20
-    private const val MAX_SETTINGS = 10
-    private const val MAX_HEADERS = 10
-    private const val MAX_BODY_NODES = 100
-    private const val MAX_BODY_DEPTH = 4
-    private const val MAX_HTTP_TIMEOUT_MS = 60_000L
-    private const val DEFAULT_SETTING_LENGTH = 500
-    private const val MAX_SETTING_LENGTH = 2000
 
     private val ID = Regex("^[a-z0-9][a-z0-9.-]{2,63}$")
     private val VERSION = Regex("^\\d{1,4}\\.\\d{1,4}\\.\\d{1,4}$")
@@ -59,7 +51,6 @@ object ManifestParser {
     private val INTENT_ACTION = Regex("^[A-Za-z][A-Za-z0-9_.]{0,199}$")
     private val EXTRA_KEY = Regex("^[A-Za-z][A-Za-z0-9_.]{0,119}$")
     private val COMMAND_NAME = Regex("^[a-z][a-z0-9-]{1,39}$")
-    private val BODY_KEY = Regex("^[A-Za-z_][A-Za-z0-9_]{0,59}$")
     private val SNIPPET_PREFIX = Regex("^[A-Za-z0-9_.-]{1,30}$")
 
     fun isValidId(id: String): Boolean = ID.matches(id)
@@ -103,10 +94,8 @@ object ManifestParser {
             } else {
                 for (i in 0 until permissionList.length()) {
                     val p = permissionList.opt(i) as? String
-                    if (p != null && p.startsWith(Permission.HTTP_PREFIX)) {
-                        val parsed = HttpGuard.parsePermission(p)
-                        val http = parsed.getOrNull()
-                        if (http != null) permissions += http else errors += "permissions[$i]: ${parsed.exceptionOrNull()?.message}"
+                    if (p != null && p.startsWith(HttpPlugin.KEY_PREFIX)) {
+                        HttpManifest.permission(p, "permissions[$i]", errors)?.let { permissions += it }
                         continue
                     }
                     if (p == null || !p.startsWith(Permission.EXTERNAL_APP_PREFIX)) {
@@ -124,14 +113,19 @@ object ManifestParser {
             }
         }
         val allowedPackages = permissions.filterIsInstance<Permission.ExternalApp>().map { it.packageName }.toSet()
-        val allowedHttp = permissions.filterIsInstance<Permission.Http>()
-        val settings = parseSettings(root, errors)
+        val httpPermissions = permissions.filterIsInstance<HttpPermission>()
+        val secrets = HttpManifest.secrets(root, errors)
+        val secretNames = secrets.map { it.name }.toSet()
 
         val tools = ArrayList<PluginToolSpec>()
+        val httpTools = ArrayList<HttpToolSpec>()
         for ((i, o) in objects(root, "tools", MAX_TOOLS, "", errors)) {
-            parseTool(o, i, allowedPackages, allowedHttp, settings, errors)?.let { tools += it }
+            when (val tool = parseTool(o, i, allowedPackages, httpPermissions, secretNames, errors)) {
+                is PluginToolSpec -> tools += tool
+                is HttpToolSpec -> httpTools += tool
+            }
         }
-        for ((toolName, same) in tools.groupBy { it.name }) {
+        for ((toolName, same) in (tools.map { it.name } + httpTools.map { it.name }).groupBy { it }) {
             if (same.size > 1) errors += "tool '$toolName' is listed twice"
         }
 
@@ -155,7 +149,10 @@ object ManifestParser {
             return ParseResult.Invalid(errors.take(MAX_ERRORS))
         }
         return ParseResult.Ok(
-            PluginManifest(id, name, version, description, permissions.toList(), tools, commands, snippets, author, icon, accent, settings),
+            PluginManifest(
+                id, name, version, description, permissions.toList(), tools, commands, snippets, author, icon, accent,
+                httpTools, secrets,
+            ),
         )
     }
 
@@ -212,14 +209,15 @@ object ManifestParser {
         return out
     }
 
+    /** A [PluginToolSpec] (android-service action), an [HttpToolSpec] (http action), or null when the tool had errors. */
     private fun parseTool(
         o: JSONObject,
         index: Int,
         allowed: Set<String>,
-        allowedHttp: List<Permission.Http>,
-        settings: List<SettingSpec>,
+        httpPermissions: List<HttpPermission>,
+        secretNames: Set<String>,
         errors: MutableList<String>,
-    ): PluginToolSpec? {
+    ): Any? {
         val before = errors.size
         val name = o.opt("name") as? String
         val nameOk = name != null && TOOL_NAME.matches(name)
@@ -233,10 +231,12 @@ object ManifestParser {
             return null
         }
         val paramNames = params.map { it.name }.toSet()
-        val action: ToolAction? = when (actionObject.opt("kind")) {
-            KIND_HTTP -> parseHttp(actionObject, label, paramNames, settings, allowedHttp, errors)
-            else -> parseAction(actionObject, label, paramNames, allowed, errors)
+        if (actionObject.opt("kind") == HttpPlugin.KIND) {
+            val http = HttpManifest.action(actionObject, label, paramNames, httpPermissions, secretNames, errors)
+            if (errors.size > before || name == null || http == null) return null
+            return HttpToolSpec(name, description, params, http)
         }
+        val action = parseAction(actionObject, label, paramNames, allowed, errors)
         if (errors.size > before || name == null || action == null) return null
         return PluginToolSpec(name, description, params, action)
     }
@@ -284,7 +284,7 @@ object ManifestParser {
         errors: MutableList<String>,
     ): ServiceAction? {
         val before = errors.size
-        if (a.opt("kind") != KIND_ANDROID_SERVICE) errors += "$label: action.kind must be \"$KIND_ANDROID_SERVICE\" or \"$KIND_HTTP\""
+        if (a.opt("kind") != KIND_ANDROID_SERVICE) errors += "$label: action.kind must be \"$KIND_ANDROID_SERVICE\" or \"${HttpPlugin.KIND}\""
 
         val pkg = a.opt("package") as? String
         if (pkg == null) {
@@ -350,250 +350,6 @@ object ManifestParser {
 
         if (errors.size > before || pkg == null || className == null || intentAction == null) return null
         return ServiceAction(pkg, className, intentAction, extras, result, timeout)
-    }
-
-    private fun flag(o: JSONObject, key: String, default: Boolean, where: String, errors: MutableList<String>): Boolean {
-        val v = o.opt(key)
-        if (v == null || v === JSONObject.NULL) return default
-        if (v !is Boolean) {
-            errors += "$where: $key must be true or false"
-            return default
-        }
-        return v
-    }
-
-    private fun parseSettings(root: JSONObject, errors: MutableList<String>): List<SettingSpec> {
-        val out = ArrayList<SettingSpec>()
-        for ((i, s) in objects(root, "settings", MAX_SETTINGS, "", errors)) {
-            val before = errors.size
-            val name = s.opt("name") as? String
-            val valid = name != null && PARAM_NAME.matches(name)
-            val label = if (valid) "setting '$name'" else "settings[$i]"
-            if (!valid) errors += "$label: name must be lowercase letters, digits and underscores, starting with a letter"
-            val shownLabel = shown(s, "label", 1, 60, label, errors)
-            val description = shown(s, "description", 0, 200, label, errors)
-            val secret = flag(s, "secret", false, label, errors)
-            val required = flag(s, "required", true, label, errors)
-            val lengthValue = s.opt("maxLength")
-            val maxLength = when (lengthValue) {
-                null -> DEFAULT_SETTING_LENGTH
-                is Int -> lengthValue
-                else -> {
-                    errors += "$label: maxLength must be a whole number"
-                    DEFAULT_SETTING_LENGTH
-                }
-            }
-            if (maxLength !in 1..MAX_SETTING_LENGTH) errors += "$label: maxLength must be 1 to $MAX_SETTING_LENGTH"
-            if (errors.size == before && name != null) out += SettingSpec(name, shownLabel, description, secret, required, maxLength)
-        }
-        for ((settingName, same) in out.groupBy { it.name }) {
-            if (same.size > 1) errors += "setting '$settingName' is listed twice"
-        }
-        return out
-    }
-
-    /** Every {name} in [text] must be something the tool or plugin really has. A header may not use tool arguments. */
-    private fun checkTokens(
-        text: String,
-        where: String,
-        paramNames: Set<String>,
-        settings: List<SettingSpec>,
-        allowParams: Boolean,
-        errors: MutableList<String>,
-    ) {
-        for (ref in HttpTemplates.refs(text).distinct()) {
-            when (ref.kind) {
-                HttpTemplates.Kind.PARAM ->
-                    if (!allowParams) {
-                        errors += "$where uses {${ref.name}}; a header can only use {secret.x} and {setting.x}"
-                    } else if (ref.name !in paramNames) {
-                        errors += "$where uses {${ref.name}} but the tool has no param with that name"
-                    }
-                HttpTemplates.Kind.SECRET ->
-                    if (settings.none { it.name == ref.name && it.secret }) {
-                        errors += "$where uses {secret.${ref.name}} but the plugin has no secret setting with that name"
-                    }
-                HttpTemplates.Kind.SETTING ->
-                    if (settings.none { it.name == ref.name && !it.secret }) {
-                        errors += "$where uses {setting.${ref.name}} but the plugin has no plain setting with that name"
-                    }
-            }
-        }
-    }
-
-    /** The http permission an address falls under: its host, and a pinned path that its fixed start stays inside. */
-    private fun httpPermissionFor(url: String, allowed: List<Permission.Http>, where: String, errors: MutableList<String>): Permission.Http? {
-        if (!url.startsWith("https://")) {
-            errors += "$where.url must start with https://"
-            return null
-        }
-        val afterScheme = url.removePrefix("https://")
-        val authorityEnd = afterScheme.indexOfFirst { it == '/' || it == '?' }
-        val authority = if (authorityEnd < 0) afterScheme else afterScheme.substring(0, authorityEnd)
-        if (authority.contains('{') || authority.contains('}')) {
-            errors += "$where.url: the host cannot contain a placeholder"
-            return null
-        }
-        val onHost = allowed.filter { it.host == authority }
-        if (onHost.isEmpty()) {
-            errors += "$where.url is on '$authority' but the plugin does not ask for ${Permission.HTTP_PREFIX}$authority"
-            return null
-        }
-        val path = if (authorityEnd < 0) "/" else afterScheme.substring(authorityEnd)
-        val fixedPath = path.substringBefore('{').substringBefore('?').ifEmpty { "/" }
-        val match = onHost.firstOrNull { HttpGuard.pathAllowed(fixedPath, it.pathPrefix) }
-        if (match == null) {
-            errors += "$where.url: the path is outside the pinned path ${onHost.joinToString { it.pathPrefix.ifEmpty { "/" } }}"
-            return null
-        }
-        return match
-    }
-
-    private fun parseHttp(
-        a: JSONObject,
-        label: String,
-        paramNames: Set<String>,
-        settings: List<SettingSpec>,
-        allowed: List<Permission.Http>,
-        errors: MutableList<String>,
-    ): HttpAction? {
-        val before = errors.size
-        val where = "$label: action"
-
-        val methodValue = a.opt("method")
-        var method = HttpMethod.GET
-        if (methodValue != null) {
-            val found = HttpMethod.values().firstOrNull { it.name == methodValue }
-            if (found == null) errors += "$where.method must be GET, POST, PUT or PATCH" else method = found
-        }
-
-        val url = a.opt("url") as? String
-        var permission: Permission.Http? = null
-        if (url == null) {
-            errors += "$where.url is required"
-        } else {
-            permission = httpPermissionFor(url, allowed, where, errors)
-            checkTokens(url, "$where.url", paramNames, settings, true, errors)
-            val fixed = HttpTemplates.TOKEN.replace(url, "x")
-            if (fixed.contains('{') || fixed.contains('}')) errors += "$where.url has a { or } that is not a placeholder"
-            if (permission != null) HttpGuard.checkUrl(fixed, permission)?.let { errors += "$where.url: $it" }
-        }
-
-        val headers = LinkedHashMap<String, String>()
-        val headerValue = a.opt("headers")
-        if (headerValue != null && headerValue !== JSONObject.NULL) {
-            if (headerValue !is JSONObject) {
-                errors += "$where.headers must be an object"
-            } else if (headerValue.length() > MAX_HEADERS) {
-                errors += "$where.headers has more than $MAX_HEADERS entries"
-            } else {
-                for (name in headerValue.keys()) {
-                    val nameProblem = HttpGuard.headerNameProblem(name)
-                    if (nameProblem != null) {
-                        errors += "$where.headers: $nameProblem"
-                        continue
-                    }
-                    if (headers.keys.any { it.equals(name, ignoreCase = true) }) {
-                        errors += "$where.headers: '$name' is listed twice"
-                        continue
-                    }
-                    val value = headerValue.opt(name) as? String
-                    if (value == null) {
-                        errors += "$where.headers['$name'] must be text"
-                        continue
-                    }
-                    checkTokens(value, "$where.headers['$name']", paramNames, settings, false, errors)
-                    val fixed = HttpTemplates.TOKEN.replace(value, "x")
-                    if (fixed.contains('{') || fixed.contains('}')) errors += "$where.headers['$name'] has a { or } that is not a placeholder"
-                    HttpGuard.headerValueProblem(name, fixed)?.let { errors += "$where.headers: $it" }
-                    headers[name] = value
-                }
-            }
-        }
-
-        var body: BodyNode? = null
-        val bodyValue = a.opt("body")
-        if (bodyValue != null && bodyValue !== JSONObject.NULL) {
-            if (method == HttpMethod.GET) {
-                errors += "$where: a GET request cannot have a body"
-            } else if (bodyValue !is JSONObject && bodyValue !is JSONArray) {
-                errors += "$where.body must be a JSON object or list"
-            } else {
-                body = bodyNode(bodyValue, "$where.body", 0, IntArray(1), paramNames, settings, errors)
-            }
-        }
-
-        val timeoutValue = a.opt("timeoutMs")
-        val timeout = when (timeoutValue) {
-            null -> DEFAULT_TIMEOUT_MS
-            is Int -> timeoutValue.toLong()
-            is Long -> timeoutValue
-            else -> {
-                errors += "$where.timeoutMs must be a whole number"
-                DEFAULT_TIMEOUT_MS
-            }
-        }
-        if (timeout !in MIN_TIMEOUT_MS..MAX_HTTP_TIMEOUT_MS) errors += "$where.timeoutMs must be $MIN_TIMEOUT_MS to $MAX_HTTP_TIMEOUT_MS"
-        val untrusted = flag(a, "untrusted", false, where, errors)
-
-        if (errors.size > before || url == null || permission == null) return null
-        return HttpAction(method, url, headers, body, timeout, permission, untrusted)
-    }
-
-    private fun bodyNode(
-        v: Any?,
-        where: String,
-        depth: Int,
-        count: IntArray,
-        paramNames: Set<String>,
-        settings: List<SettingSpec>,
-        errors: MutableList<String>,
-    ): BodyNode? {
-        count[0]++
-        if (count[0] > MAX_BODY_NODES) {
-            if (count[0] == MAX_BODY_NODES + 1) errors += "$where: the body has more than $MAX_BODY_NODES values"
-            return null
-        }
-        if (depth > MAX_BODY_DEPTH) {
-            errors += "$where: the body is nested more than $MAX_BODY_DEPTH levels"
-            return null
-        }
-        return when (v) {
-            is String -> if (v.length > MAX_EXTRA_TEXT) {
-                errors += "$where is longer than $MAX_EXTRA_TEXT characters"
-                null
-            } else {
-                checkTokens(v, where, paramNames, settings, true, errors)
-                BodyNode.Text(v)
-            }
-            is Boolean -> BodyNode.Flag(v)
-            is Int -> BodyNode.Num(v.toLong())
-            is Long -> BodyNode.Num(v)
-            is JSONObject -> {
-                val fields = LinkedHashMap<String, BodyNode>()
-                for (key in v.keys()) {
-                    if (!BODY_KEY.matches(key)) {
-                        errors += "$where: field name '$key' has characters that are not allowed"
-                        continue
-                    }
-                    val child = bodyNode(v.opt(key), "$where.$key", depth + 1, count, paramNames, settings, errors)
-                    if (child != null) fields[key] = child
-                }
-                BodyNode.Obj(fields)
-            }
-            is JSONArray -> {
-                val items = ArrayList<BodyNode>()
-                for (i in 0 until v.length()) {
-                    val child = bodyNode(v.opt(i), "$where[$i]", depth + 1, count, paramNames, settings, errors)
-                    if (child != null) items += child
-                }
-                BodyNode.Arr(items)
-            }
-            else -> {
-                errors += "$where must be text, true or false, a whole number, an object or a list"
-                null
-            }
-        }
     }
 
     private fun parseResult(r: JSONObject, label: String, errors: MutableList<String>): ResultSpec? {

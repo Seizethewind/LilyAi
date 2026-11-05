@@ -21,7 +21,7 @@ sealed interface InstallResult {
  * - Only permissions the manifest asks for can be allowed.
  * - An update keeps an allowance only if the new manifest still asks for it, and never adds one.
  * - "Don't ask again" for a tool survives an update only if that tool is exactly the same and still allowed.
- * - A tool that changes something (an http request other than GET) can never be set to "don't ask again".
+ * - A web request that is not a plain read (anything but GET) can never be set to "don't ask again".
  */
 class PluginRegistry(private val store: PluginStore) {
     fun list(): List<InstalledPlugin> = store.list()
@@ -56,21 +56,20 @@ class PluginRegistry(private val store: PluginStore) {
     /** Takes a permission back, and with it "don't ask again" for every tool that needs it. */
     fun revoke(id: String, permissionKey: String): Boolean = change(id) { p, s ->
         val stillAuto = s.autoApprove.filter { tool ->
-            val spec = p.manifest.tools.firstOrNull { it.name == tool }
-            spec != null && spec.action.permissionKey != permissionKey
+            val key = p.manifest.permissionKeyOf(tool)
+            key != null && key != permissionKey
         }.toSet()
         s.copy(granted = s.granted - permissionKey, autoApprove = stillAuto)
     }
 
-    /** "Run this tool without asking each time." Needs the tool to exist and its permission to be allowed. */
+    /** "Run this tool without asking each time." Needs the tool to exist, be allowed to skip the question, and its permission to be allowed. */
     fun setAutoApprove(id: String, toolName: String, on: Boolean): Boolean = change(id) { p, s ->
-        val spec = p.manifest.tools.firstOrNull { it.name == toolName }
+        val key = p.manifest.permissionKeyOf(toolName)
         when {
-            spec == null -> null
+            key == null -> null
             !on -> s.copy(autoApprove = s.autoApprove - toolName)
-            // A tool that changes something somewhere else asks every time; the switch is never offered for it.
-            spec.action.alwaysAsks -> null
-            spec.action.permissionKey !in s.granted -> null
+            !p.manifest.mayRunWithoutAsking(toolName) -> null
+            key !in s.granted -> null
             else -> s.copy(autoApprove = s.autoApprove + toolName)
         }
     }
@@ -91,9 +90,10 @@ class PluginRegistry(private val store: PluginStore) {
         val kept = LinkedHashSet<String>()
         val cleared = LinkedHashSet<String>()
         for (toolName in old.state.autoApprove) {
-            val before = old.manifest.tools.firstOrNull { it.name == toolName }
-            val after = manifest.tools.firstOrNull { it.name == toolName }
-            val stillAllowed = after != null && !after.action.alwaysAsks && after.action.permissionKey in granted
+            val before = old.manifest.specOf(toolName)
+            val after = manifest.specOf(toolName)
+            val key = manifest.permissionKeyOf(toolName)
+            val stillAllowed = key != null && key in granted && manifest.mayRunWithoutAsking(toolName)
             if (before != null && after != null && before == after && stillAllowed) kept += toolName else cleared += toolName
         }
         return Carried(PluginState(old.state.enabled, granted, kept), dropped, cleared)
