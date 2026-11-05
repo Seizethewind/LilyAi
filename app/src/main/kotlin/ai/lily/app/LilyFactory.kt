@@ -8,6 +8,7 @@ import ai.lily.app.core.LlmPlanner
 import ai.lily.app.core.Memory
 import ai.lily.app.core.WorkerManager
 import ai.lily.app.core.WorkerType
+import ai.lily.app.gateway.LilyGateway
 import ai.lily.app.gateway.ModelGateway
 import ai.lily.app.gateway.RouterModelGateway
 import ai.lily.app.memory.TursoClient
@@ -43,6 +44,8 @@ object LilyFactory {
      * [roster] is the list of created workers that Lily's own TEAM worker reads and changes. Without it there is no TEAM worker.
      * Workers the person created (settings.workers) take over their role from the built-in worker, each with its own router,
      * model and instructions. A role with no created workers keeps the built-in one.
+     * Lily's own rules (settings.lily) are added to every worker's calls and to the planner's, after the caller's own system text.
+     * Her model and router apply to the planner only; workers keep their own.
      */
     fun create(
         settings: AppSettings,
@@ -53,6 +56,8 @@ object LilyFactory {
     ): Lily {
         val gateway = RouterModelGateway(settings.router)
         val second: ModelGateway? = settings.router2?.let { RouterModelGateway(it) }
+        val lily = settings.lily
+        fun withLilysRules(g: ModelGateway): ModelGateway = LilyGateway(g, lily.instructions)
 
         val tools = ToolSystem().apply {
             register(WebSearchTool(gateway, settings.router.webSearchModel))
@@ -81,11 +86,12 @@ object LilyFactory {
                 val profiles = created[type].orEmpty()
                 if (profiles.isEmpty()) {
                     // Testers exist only when the person makes them; every other role always has a built-in worker.
-                    if (type != WorkerType.TEST) register(worker(type, gateway))
+                    if (type != WorkerType.TEST) register(worker(type, withLilysRules(gateway)))
                 } else {
                     for (p in profiles) {
                         val router = if (p.router == 1 && second != null) second else gateway
-                        register(worker(type, ProfileGateway(router, p.model, p.instructions)))
+                        // ProfileGateway puts the worker's instructions first, then the call's own text; Lily's rules are added last.
+                        register(worker(type, ProfileGateway(withLilysRules(router), p.model, p.instructions)))
                     }
                 }
             }
@@ -97,6 +103,7 @@ object LilyFactory {
             Memory(TursoJournal(TursoClient(journalDb)), TursoProvenFacts(TursoClient(factsDb)))
         } else null
 
-        return Lily(LlmPlanner(gateway), manager, Context(), memory)
+        val plannerRouter = if (lily.router == 1 && second != null) second else gateway
+        return Lily(LlmPlanner(LilyGateway(plannerRouter, lily.instructions, lily.model)), manager, Context(), memory)
     }
 }

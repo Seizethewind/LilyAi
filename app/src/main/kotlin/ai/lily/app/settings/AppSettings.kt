@@ -22,6 +22,8 @@ data class AppSettings(
     val router2: RouterConfig? = null,
     /** The workers the person or Lily created. Empty means the built-in workers answer. */
     val workers: List<WorkerProfile> = emptyList(),
+    /** Lily's own name, photo, rules, router and model. */
+    val lily: LilyProfile = LilyProfile(),
 ) {
     /** The router a worker points at: 0 is the first, 1 the second. A missing second router falls back to the first. */
     fun routerAt(index: Int): RouterConfig = if (index == 1) router2 ?: router else router
