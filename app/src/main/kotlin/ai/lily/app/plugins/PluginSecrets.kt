@@ -4,25 +4,14 @@ import android.content.Context
 import androidx.security.crypto.EncryptedSharedPreferences
 import androidx.security.crypto.MasterKey
 
-/**
- * Where the values a person fills in for a plugin are kept, per plugin and setting name. Secrets are never put in the
- * plugin's own file, never shown again after saving and never given to Lily: a tool only sends them, at run time.
- */
+/** Values the person typed in for a plugin's declared secrets. Keyed by plugin id and secret name. */
 interface PluginSecrets {
     fun get(pluginId: String, name: String): String?
     fun set(pluginId: String, name: String, value: String)
     fun remove(pluginId: String, name: String)
 
-    /** Forgets everything kept for one plugin (used on uninstall). */
+    /** Forgets every secret of one plugin (used when it is uninstalled). */
     fun clear(pluginId: String)
-}
-
-/** Holds nothing: used where no storage exists. */
-object NoSecrets : PluginSecrets {
-    override fun get(pluginId: String, name: String): String? = null
-    override fun set(pluginId: String, name: String, value: String) = Unit
-    override fun remove(pluginId: String, name: String) = Unit
-    override fun clear(pluginId: String) = Unit
 }
 
 class InMemoryPluginSecrets : PluginSecrets {
@@ -41,12 +30,12 @@ class InMemoryPluginSecrets : PluginSecrets {
     }
 }
 
-/** Android keystore backed storage, the same kind the app uses for its keys and tokens. */
+/** Encrypted app storage, like the keys in settings. A plugin id never contains '/', so the prefix cannot clash. */
 class EncryptedPluginSecrets(context: Context) : PluginSecrets {
     private val prefs = EncryptedSharedPreferences.create(
-        context.applicationContext,
+        context,
         "lily_plugin_secrets",
-        MasterKey.Builder(context.applicationContext).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
+        MasterKey.Builder(context).setKeyScheme(MasterKey.KeyScheme.AES256_GCM).build(),
         EncryptedSharedPreferences.PrefKeyEncryptionScheme.AES256_SIV,
         EncryptedSharedPreferences.PrefValueEncryptionScheme.AES256_GCM,
     )
@@ -62,8 +51,8 @@ class EncryptedPluginSecrets(context: Context) : PluginSecrets {
     }
 
     override fun clear(pluginId: String) {
-        val editor = prefs.edit()
-        prefs.all.keys.filter { it.startsWith("$pluginId/") }.forEach { editor.remove(it) }
-        editor.apply()
+        val edit = prefs.edit()
+        for (key in prefs.all.keys) if (key.startsWith("$pluginId/")) edit.remove(key)
+        edit.apply()
     }
 }

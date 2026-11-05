@@ -4,6 +4,8 @@ package ai.lily.app.plugins
  * What a plugin declares. A plugin is data only: the app never loads or runs code from a plugin.
  * Everything a plugin can do goes through a bridge the app provides, and only after the person allows it.
  * [author], [icon] and [accent] are optional and only change how the plugin's card looks; "" means not given.
+ * [tools] start a service in another app; [httpTools] make a web request. Tool names are unique across both lists.
+ * [secrets] are values the person types in once (see [PluginSecrets]); a manifest never holds their values.
  */
 data class PluginManifest(
     val id: String,
@@ -17,9 +19,23 @@ data class PluginManifest(
     val author: String = "",
     val icon: String = "",
     val accent: String = "",
-    /** Values the person fills in on the plugin's page (a token, a channel list). Secret ones live in encrypted storage. */
-    val settings: List<SettingSpec> = emptyList(),
-)
+    val httpTools: List<HttpToolSpec> = emptyList(),
+    val secrets: List<PluginSecret> = emptyList(),
+) {
+    fun toolNames(): Set<String> = (tools.map { it.name } + httpTools.map { it.name }).toSet()
+
+    /** The tool's spec, of either kind. Two specs are equal exactly when the tool is unchanged. */
+    fun specOf(name: String): Any? = tools.firstOrNull { it.name == name } ?: httpTools.firstOrNull { it.name == name }
+
+    /** The [Permission.key] a tool needs, or null when there is no such tool. */
+    fun permissionKeyOf(name: String): String? =
+        tools.firstOrNull { it.name == name }?.let { Permission.ExternalApp(it.action.packageName).key }
+            ?: httpTools.firstOrNull { it.name == name }?.action?.permissionKey
+
+    /** False for a web request that is not a plain read: it asks every time and "don't ask again" is refused. */
+    fun mayRunWithoutAsking(name: String): Boolean =
+        httpTools.firstOrNull { it.name == name }?.let { it.action.method == "GET" } ?: true
+}
 
 /** Something a plugin asks the person to allow. */
 sealed interface Permission {
@@ -31,29 +47,9 @@ sealed interface Permission {
         override val key: String get() = Permission.EXTERNAL_APP_PREFIX + packageName
     }
 
-    /**
-     * Send https requests to one host, exactly: no sub-domains, no port, no other host after a redirect. [pathPrefix] is
-     * "" or a pinned start of the path such as "/api/v10/"; a request outside it is refused.
-     */
-    data class Http(val host: String, val pathPrefix: String = "") : Permission {
-        override val key: String get() = Permission.HTTP_PREFIX + host + pathPrefix
-    }
-
     companion object {
         const val EXTERNAL_APP_PREFIX = "external-app:"
-        const val HTTP_PREFIX = "http:"
     }
-}
-
-/** What a tool does when it runs. The permission it needs is [permissionKey]. */
-sealed interface ToolAction {
-    val permissionKey: String
-
-    /** The app package or host the person is told about. */
-    val target: String
-
-    /** True when the tool changes something somewhere else: it asks every time and "don't ask again" is never offered. */
-    val alwaysAsks: Boolean
 }
 
 /** A tool the coding and other workers can call. */
@@ -61,7 +57,7 @@ data class PluginToolSpec(
     val name: String,
     val description: String,
     val params: List<ToolParam>,
-    val action: ToolAction,
+    val action: ServiceAction,
 )
 
 data class ToolParam(
@@ -84,11 +80,7 @@ data class ServiceAction(
     /** Null when the call is fire and forget. */
     val result: ResultSpec?,
     val timeoutMs: Long,
-) : ToolAction {
-    override val permissionKey: String get() = Permission.ExternalApp(packageName).key
-    override val target: String get() = packageName
-    override val alwaysAsks: Boolean get() = false
-}
+)
 
 sealed interface ExtraValue {
     data class Text(val value: String) : ExtraValue
