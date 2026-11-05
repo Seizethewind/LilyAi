@@ -56,6 +56,8 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.luminance
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.text.input.ImeAction
+import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.Dp
 import androidx.compose.ui.unit.dp
@@ -73,6 +75,7 @@ fun PluginsScreen(services: PluginServices, modifier: Modifier = Modifier) {
     val installed = remember(services.version) { services.registry.list() }
     val bundled = remember { services.bundled() }
     var catalog by remember { mutableStateOf<List<CatalogEntry>>(emptyList()) }
+    var catalogUrl by remember { mutableStateOf(PluginCatalog.DEFAULT_URL) }
     var loading by remember { mutableStateOf(false) }
     var problem by remember { mutableStateOf<String?>(null) }
     var note by remember { mutableStateOf<String?>(null) }
@@ -85,11 +88,12 @@ fun PluginsScreen(services: PluginServices, modifier: Modifier = Modifier) {
 
     // shortcut: the catalog is fetched again every time this section opens; cache it if that gets slow.
     fun loadCatalog() {
+        if (loading) return
         scope.launch {
             loading = true
             problem = null
             try {
-                catalog = PluginCatalog.loadIndex(PluginCatalog.DEFAULT_URL)
+                catalog = PluginCatalog.loadIndex(catalogUrl.trim())
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
@@ -156,9 +160,23 @@ fun PluginsScreen(services: PluginServices, modifier: Modifier = Modifier) {
                     )
                 }
                 if (tab == 1) {
+                    item {
+                        Column(Modifier.padding(start = 20.dp, end = 20.dp, bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+                            LilyTextField(
+                                catalogUrl,
+                                { catalogUrl = it },
+                                "Catalog address",
+                                mono = true,
+                                keyboardType = KeyboardType.Uri,
+                                imeAction = ImeAction.Go,
+                                onImeAction = { loadCatalog() },
+                            )
+                            LilyButton(if (loading) "Loading" else "Load catalog", onClick = { loadCatalog() }, enabled = !loading, kind = ButtonKind.Tonal)
+                        }
+                    }
                     problem?.let { message ->
                         item {
-                            Banner(message, Tone.Coral, Modifier.padding(horizontal = 20.dp, vertical = 4.dp), actionLabel = "Retry", onAction = { loadCatalog() })
+                            Banner(message, Tone.Coral, Modifier.padding(horizontal = 20.dp, vertical = 4.dp))
                         }
                     }
                     if (loading) {
@@ -220,7 +238,7 @@ fun PluginsScreen(services: PluginServices, modifier: Modifier = Modifier) {
     }
 }
 
-/** "v1.0.0 · Someone", leaving out what the plugin does not say. */
+/** "v1.0.0 \u00B7 Someone", leaving out what the plugin does not say. */
 private fun byline(l: Listing): String = listOf("v${l.version}", l.author).filter { it.length > 1 }.joinToString(" \u00B7 ")
 
 /** The plugin's icon, or its first letter, on a tile in its accent colour (the app's petal colour when it has none). */
