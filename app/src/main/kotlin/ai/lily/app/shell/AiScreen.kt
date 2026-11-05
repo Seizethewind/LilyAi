@@ -2,6 +2,9 @@ package ai.lily.app.shell
 
 import ai.lily.app.core.WorkerType
 import ai.lily.app.gateway.RouterConfig
+import ai.lily.app.gateway.RouterEndpoint
+import ai.lily.app.gateway.RouterHealth
+import ai.lily.app.gateway.RouterKind
 import ai.lily.app.gateway.RouterModels
 import ai.lily.app.settings.AppSettings
 import ai.lily.app.settings.EncryptedSettingsStore
@@ -38,6 +41,7 @@ import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.heightIn
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.LazyListScope
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
 import androidx.compose.material.icons.Icons
@@ -52,6 +56,8 @@ import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.platform.LocalClipboardManager
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.text.font.FontFamily
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.text.style.TextOverflow
@@ -79,16 +85,37 @@ class AiState(private val store: EncryptedSettingsStore, private val onChanged: 
         onChanged()
     }
 
-    fun saveRouter(index: Int, url: String, key: String) {
+    fun saveRouter(index: Int, name: String, kind: RouterKind, url: String, key: String) {
         val address = url.trim()
         if (index == 0) {
-            commit(settings.copy(router = settings.router.copy(baseUrl = address.ifBlank { settings.router.baseUrl }, apiKey = key.trim())))
+            commit(
+                settings.copy(
+                    router = settings.router.copy(name = name.trim(), kind = kind, baseUrl = address.ifBlank { settings.router.baseUrl }, apiKey = key.trim()),
+                ),
+            )
         } else {
             // An empty address removes the second router; workers pointing at it then use the first.
-            val next = if (address.isBlank()) null else (settings.router2 ?: RouterConfig()).copy(baseUrl = address, apiKey = key.trim())
+            val next = if (address.isBlank()) {
+                null
+            } else {
+                (settings.router2 ?: RouterConfig(kind = RouterKind.NineRouter)).copy(name = name.trim(), kind = kind, baseUrl = address, apiKey = key.trim())
+            }
             commit(settings.copy(router2 = next))
         }
         status = status + (index to "Saved")
+    }
+
+    /** Asks the router's open health address whether it is up. */
+    suspend fun checkHealth(index: Int) {
+        val config = if (index == 0) settings.router else settings.router2
+        if (config == null) {
+            status = status + (index to "Save an address first")
+            return
+        }
+        status = status + (index to "Checking…")
+        RouterHealth.check(config)
+            .onSuccess { status = status + (index to it) }
+            .onFailure { status = status + (index to "Could not reach: ${it.message}") }
     }
 
     suspend fun loadModels(index: Int) {
@@ -156,14 +183,35 @@ fun AiScreen(state: AiState, page: AiPage, onMenu: (() -> Unit)?, modifier: Modi
     var creating by remember { mutableStateOf(false) }
     var note by remember { mutableStateOf<String?>(null) }
     val menu: @Composable RowScope.() -> Unit = { if (onMenu != null) LilyIconButton(Icons.Filled.Menu, "Open AI menu", onMenu) }
+    // The kind chosen on screen, so the endpoint list follows a tap before Save. Starts again from what is saved after each save.
+    var kinds by remember(state.settings.router.kind, state.settings.router2?.kind) {
+        mutableStateOf(listOf(state.settings.router.kind, state.settings.router2?.kind ?: RouterKind.NineRouter))
+    }
+    var endpointsOpen by remember { mutableStateOf<Int?>(null) }
+    var endpointQuery by remember { mutableStateOf("") }
 
     ScreenFrame(modifier) {
         LazyColumn(Modifier.fillMaxSize()) {
             if (page == AiPage.Routers) {
-                item { ScreenHeader(page.label, subtitle = "The self-hosted endpoints Lily sends her questions to.", actions = menu) }
-                item { RouterBlock(0, state, scope) }
-                item { Hairline(Modifier.padding(horizontal = 20.dp)) }
-                item { RouterBlock(1, state, scope) }
+                item { ScreenHeader(page.label, subtitle = "The self-hosted routers Lily sends her questions to, and every endpoint each one offers.", actions = menu) }
+                for (index in 0..1) {
+                    item(key = "router-$index") {
+                        RouterBlock(
+                            index = index,
+                            state = state,
+                            scope = scope,
+                            kind = kinds[index],
+                            onKind = { k -> kinds = kinds.mapIndexed { i, old -> if (i == index) k else old } },
+                            endpointsOpen = endpointsOpen == index,
+                            onToggleEndpoints = { endpointsOpen = if (endpointsOpen == index) null else index },
+                        )
+                    }
+                    if (endpointsOpen == index) {
+                        val config = if (index == 0) state.settings.router else state.settings.router2
+                        endpointRows(index, kinds[index], config?.origin.orEmpty(), endpointQuery) { endpointQuery = it }
+                    }
+                    if (index == 0) item(key = "router-divider") { Hairline(Modifier.padding(horizontal = 20.dp)) }
+                }
             } else {
                 item { ScreenHeader(page.label, subtitle = "Each one has its own role, model and instructions.", actions = menu) }
                 item {
@@ -207,9 +255,19 @@ fun AiScreen(state: AiState, page: AiPage, onMenu: (() -> Unit)?, modifier: Modi
     }
 }
 
+@OptIn(ExperimentalLayoutApi::class)
 @Composable
-private fun RouterBlock(index: Int, state: AiState, scope: CoroutineScope) {
+private fun RouterBlock(
+    index: Int,
+    state: AiState,
+    scope: CoroutineScope,
+    kind: RouterKind,
+    onKind: (RouterKind) -> Unit,
+    endpointsOpen: Boolean,
+    onToggleEndpoints: () -> Unit,
+) {
     val config = if (index == 0) state.settings.router else state.settings.router2
+    var name by remember(config?.name) { mutableStateOf(config?.name.orEmpty()) }
     var url by remember(config?.baseUrl) { mutableStateOf(config?.baseUrl.orEmpty()) }
     var key by remember(config?.apiKey) { mutableStateOf(config?.apiKey.orEmpty()) }
     val status = state.status[index]
@@ -217,33 +275,114 @@ private fun RouterBlock(index: Int, state: AiState, scope: CoroutineScope) {
         status == null -> Tone.Neutral
         status.startsWith("Could not") -> Tone.Coral
         status.startsWith("Save an") -> Tone.Stamen
-        status.startsWith("Loading") -> Tone.Petal
+        status.startsWith("Loading") || status.startsWith("Checking") -> Tone.Petal
         else -> Tone.Pad
     }
     Column(Modifier.fillMaxWidth().padding(horizontal = 20.dp, vertical = 16.dp), verticalArrangement = Arrangement.spacedBy(12.dp)) {
         Row(verticalAlignment = Alignment.CenterVertically) {
             Text(
-                if (index == 0) "Router 1" else "Router 2 (optional)",
+                (if (index == 0) "Router 1" else "Router 2 (optional)") + (config?.name?.takeIf { it.isNotBlank() }?.let { " · $it" } ?: ""),
                 style = MaterialTheme.typography.titleSmall,
                 color = MaterialTheme.colorScheme.onBackground,
                 modifier = Modifier.weight(1f),
             )
             if (status != null) StatusPill(status, tone)
         }
+        LilyTextField(value = name, onValueChange = { name = it }, label = "Name", placeholder = "Optional, for example Home server")
+        Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            FieldLabel("Router program")
+            Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+                for (k in RouterKind.entries) ChoiceChip(k.label, kind == k, onClick = { onKind(k) })
+            }
+        }
         LilyTextField(
             value = url,
             onValueChange = { url = it },
             label = "Address",
             placeholder = "https://your-router.example/v1",
-            helper = if (index == 0) "Ends with /v1" else "Leave empty to use only one router",
+            helper = if (index == 0) "Ends with /v1" else "Ends with /v1. Leave empty to use only one router",
             mono = true,
             keyboardType = KeyboardType.Uri,
         )
         LilyTextField(value = key, onValueChange = { key = it }, label = "API key", secret = true, mono = true)
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            LilyButton("Save", onClick = { state.saveRouter(index, url, key) })
+        FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            LilyButton("Save", onClick = { state.saveRouter(index, name, kind, url, key) })
+            LilyButton("Check", onClick = { scope.launch { state.checkHealth(index) } }, kind = ButtonKind.Tonal, enabled = config != null)
             LilyButton("Load models", onClick = { scope.launch { state.loadModels(index) } }, kind = ButtonKind.Tonal, enabled = config != null)
+            LilyButton(
+                if (endpointsOpen) "Hide endpoints" else "Endpoints (${kind.endpoints.size})",
+                onClick = onToggleEndpoints,
+                kind = ButtonKind.Quiet,
+            )
         }
+    }
+}
+
+/** The search box and every endpoint of [kind], grouped. Rows are lazy, so the long lists stay cheap. Tapping a row copies its address. */
+private fun LazyListScope.endpointRows(index: Int, kind: RouterKind, origin: String, query: String, onQuery: (String) -> Unit) {
+    val rows = buildList<Any> {
+        var group = ""
+        for (e in kind.endpoints) {
+            if (!e.matches(query)) continue
+            if (e.group != group) {
+                group = e.group
+                add(group)
+            }
+            add(e)
+        }
+    }
+    item(key = "endpoint-search-$index") {
+        LilyTextField(
+            value = query,
+            onValueChange = onQuery,
+            label = "Find an endpoint",
+            placeholder = "For example chat, models, POST",
+            helper = "Tap an endpoint to copy its address. :name parts are filled in by the caller.",
+            modifier = Modifier.padding(horizontal = 20.dp, vertical = 8.dp),
+        )
+    }
+    if (rows.isEmpty()) {
+        item(key = "endpoint-none-$index") {
+            Text(
+                "No endpoint matches.",
+                style = MaterialTheme.typography.bodyMedium,
+                color = LilyUi.colors.textDim,
+                modifier = Modifier.padding(horizontal = 20.dp, vertical = 12.dp),
+            )
+        }
+    }
+    items(rows, key = { if (it is RouterEndpoint) "endpoint-$index-${it.method} ${it.path}" else "group-$index-$it" }) { row ->
+        if (row is RouterEndpoint) {
+            EndpointRow(row, origin)
+        } else {
+            Text(
+                row.toString(),
+                style = MaterialTheme.typography.titleSmall,
+                color = MaterialTheme.colorScheme.onBackground,
+                modifier = Modifier.padding(start = 20.dp, end = 20.dp, top = 16.dp, bottom = 4.dp),
+            )
+        }
+    }
+}
+
+@Composable
+private fun EndpointRow(e: RouterEndpoint, origin: String) {
+    val clipboard = LocalClipboardManager.current
+    val methodTone = when (e.method) {
+        "GET" -> Tone.Pad
+        "POST" -> Tone.Petal
+        "PUT", "PATCH" -> Tone.Stamen
+        "DELETE" -> Tone.Coral
+        else -> Tone.Neutral
+    }
+    Column {
+        ListRow(
+            title = e.path,
+            subtitle = e.auth.label,
+            onClick = { clipboard.setText(AnnotatedString(origin + e.path)) },
+            trailing = { StatusPill(e.method, methodTone) },
+        )
+        Hairline(Modifier.padding(horizontal = 20.dp))
     }
 }
 
