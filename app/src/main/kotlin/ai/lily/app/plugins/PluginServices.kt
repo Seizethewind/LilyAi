@@ -48,10 +48,18 @@ class PluginServices(context: Context) {
 
     val gate = PromptGate()
     val registry = PluginRegistry(DiskPluginStore(File(app.filesDir, "plugins")))
-    val host = PluginHost(registry, AndroidServiceBridge(app), gate)
+    private val bridge = AndroidServiceBridge(app)
+    val host = PluginHost(registry, bridge, gate)
 
     var version by mutableIntStateOf(0)
         private set
+
+    /**
+     * Runs one tool of one plugin for the person (the Git screen), through the same checks, approval question and
+     * result text Lily's workers get. Never throws: a refusal comes back as text starting with "error:" or "denied:".
+     */
+    suspend fun run(pluginId: String, tool: String, args: Map<String, String>): String =
+        PluginTool(pluginId, tool, registry, bridge, gate).execute(args)
 
     /**
      * Installs the manifests that ship in assets/plugins, once each. They arrive turned off with nothing allowed. A
