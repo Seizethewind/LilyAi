@@ -8,18 +8,24 @@ import java.io.ByteArrayOutputStream
 import java.net.HttpURLConnection
 import java.net.URL
 
-/** One plugin offered by a catalog. The manifest it points to is checked again, in full, before anything is installed. */
+/**
+ * One plugin offered by a catalog. The manifest it points to is checked again, in full, before anything is installed.
+ * [author], [icon] and [accent] are optional card looks; "" means not given or not valid.
+ */
 data class CatalogEntry(
     val id: String,
     val name: String,
     val version: String,
     val description: String,
     val manifestUrl: String,
+    val author: String = "",
+    val icon: String = "",
+    val accent: String = "",
 )
 
 /**
  * A catalog is a JSON file: `{"schema":1,"plugins":[{"id","name","version","description","manifest"}]}` where `manifest` is an https
- * address. Installing from it only downloads that manifest as text and gives it to the normal installer, so a plugin from the
+ * address, and an entry may add `author`, `icon` and `accent`. Installing from it only downloads that manifest as text and gives it to the normal installer, so a plugin from the
  * catalog arrives off with nothing allowed, exactly like one pasted in by hand. No plugin code is ever downloaded or run.
  */
 object PluginCatalog {
@@ -50,7 +56,12 @@ object PluginCatalog {
                 VERSION.matches(version) &&
                 description.length <= 300 && !Visible.hasHidden(description) &&
                 url.startsWith("https://") && url.length <= 500 && url.none { it.isWhitespace() || Visible.isHidden(it) }
-            if (ok && out.none { it.id == id }) out += CatalogEntry(id, name, version, description, url)
+            if (!ok || out.any { it.id == id }) continue
+            // The looks are only cosmetic, so a bad one is dropped rather than hiding the plugin. The manifest itself stays strict.
+            val author = (o.opt("author") as? String)?.takeIf { it.length <= 60 && !Visible.hasHidden(it) } ?: ""
+            val icon = (o.opt("icon") as? String)?.takeIf { ManifestParser.isValidIcon(it) } ?: ""
+            val accent = (o.opt("accent") as? String)?.takeIf { ManifestParser.ACCENT.matches(it) } ?: ""
+            out += CatalogEntry(id, name, version, description, url, author, icon, accent)
         }
         return out
     }

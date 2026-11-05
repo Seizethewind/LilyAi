@@ -23,6 +23,9 @@ object ManifestParser {
     val PLACEHOLDER = Regex("\\{([a-z][a-z0-9_]*)\\}")
     val PROMPT_PLACEHOLDERS = setOf("selection", "file", "language")
 
+    /** The optional tile colour of a plugin card: #RRGGBB. */
+    val ACCENT = Regex("^#[0-9A-Fa-f]{6}$")
+
     private const val MAX_PERMISSIONS = 10
     private const val MAX_TOOLS = 20
     private const val MAX_PARAMS = 8
@@ -52,6 +55,10 @@ object ManifestParser {
 
     fun isValidId(id: String): Boolean = ID.matches(id)
 
+    /** One emoji or one or two letters for the tile. Whitespace and invisible characters (a zero-width joiner too) are refused. */
+    fun isValidIcon(icon: String): Boolean =
+        icon.isNotBlank() && icon.codePointCount(0, icon.length) <= 2 && icon.none { it.isWhitespace() || Visible.isHidden(it) }
+
     fun parse(text: String): ParseResult {
         if (text.toByteArray(Charsets.UTF_8).size > MAX_BYTES) {
             return ParseResult.Invalid(listOf("the manifest is larger than ${MAX_BYTES / 1024} KB"))
@@ -73,6 +80,9 @@ object ManifestParser {
         val version = root.opt("version") as? String
         if (version == null || !VERSION.matches(version)) errors += "version must look like 1.2.3"
         val description = shown(root, "description", 0, 300, "plugin", errors)
+        val author = shown(root, "author", 0, 60, "plugin", errors)
+        val icon = optionalText(root, "icon", "must be one emoji or one or two letters", errors) { isValidIcon(it) }
+        val accent = optionalText(root, "accent", "must look like #1A2B3C", errors) { ACCENT.matches(it) }
 
         val permissions = LinkedHashSet<Permission>()
         val permissionList = root.opt("permissions")
@@ -128,7 +138,7 @@ object ManifestParser {
             return ParseResult.Invalid(errors.take(MAX_ERRORS))
         }
         return ParseResult.Ok(
-            PluginManifest(id, name, version, description, permissions.toList(), tools, commands, snippets),
+            PluginManifest(id, name, version, description, permissions.toList(), tools, commands, snippets, author, icon, accent),
         )
     }
 
@@ -151,6 +161,17 @@ object ManifestParser {
             return v.take(max)
         }
         if (Visible.hasHidden(v)) errors += "$label: $key contains control or invisible characters"
+        return v
+    }
+
+    /** An optional text value: absent is "", present but wrong is an error. */
+    private fun optionalText(o: JSONObject, key: String, rule: String, errors: MutableList<String>, valid: (String) -> Boolean): String {
+        val v = o.opt(key)
+        if (v == null || v === JSONObject.NULL) return ""
+        if (v !is String || !valid(v)) {
+            errors += "plugin: $key $rule"
+            return ""
+        }
         return v
     }
 

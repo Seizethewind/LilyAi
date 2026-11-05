@@ -61,6 +61,16 @@ class PluginServices(context: Context) {
     suspend fun run(pluginId: String, tool: String, args: Map<String, String>): String =
         PluginTool(pluginId, tool, registry, bridge, gate).execute(args)
 
+    /** The manifests that ship in assets/plugins, each as (what it says, its text). One that does not parse is left out. */
+    fun bundled(): List<Pair<PluginManifest, String>> {
+        val names = runCatching { app.assets.list("plugins") }.getOrNull().orEmpty()
+        return names.filter { it.endsWith(".json") }.mapNotNull { name ->
+            val text = runCatching { app.assets.open("plugins/$name").bufferedReader().use { it.readText() } }.getOrNull()
+                ?: return@mapNotNull null
+            (ManifestParser.parse(text) as? ParseResult.Ok)?.let { it.manifest to text }
+        }
+    }
+
     /**
      * Installs the manifests that ship in assets/plugins, once each. They arrive turned off with nothing allowed. A
      * plugin the person later removes is not put back, because the ids already offered are remembered.
@@ -68,11 +78,8 @@ class PluginServices(context: Context) {
     fun installBundled() {
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val offered = prefs.getStringSet(OFFERED, emptySet()).orEmpty().toMutableSet()
-        val names = runCatching { app.assets.list("plugins") }.getOrNull().orEmpty()
         var changed = false
-        for (name in names.filter { it.endsWith(".json") }) {
-            val text = runCatching { app.assets.open("plugins/$name").bufferedReader().use { it.readText() } }.getOrNull() ?: continue
-            val manifest = (ManifestParser.parse(text) as? ParseResult.Ok)?.manifest ?: continue
+        for ((manifest, text) in bundled()) {
             if (manifest.id in offered) continue
             offered += manifest.id
             if (registry.get(manifest.id) == null) {
