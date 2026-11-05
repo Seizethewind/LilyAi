@@ -1,0 +1,222 @@
+{
+  "schema": 1,
+  "id": "lily.termux.git",
+  "name": "Git control (Termux)",
+  "version": "1.0.0",
+  "description": "Git status, diff, log, pull, add, commit and push in a Termux repo. Used by you on the Git screen and by Lily. Each command is shown first unless you chose don't ask again.",
+  "permissions": ["external-app:com.termux"],
+  "tools": [
+    {
+      "name": "git_status",
+      "description": "Show the branch and the changed files of a git repo in Termux (git status --short --branch). Read only.",
+      "params": [
+        {"name": "repo", "description": "Folder of the git repo inside Termux.", "required": true, "maxLength": 300}
+      ],
+      "action": {
+        "kind": "android-service",
+        "package": "com.termux",
+        "class": "com.termux.app.RunCommandService",
+        "intentAction": "com.termux.RUN_COMMAND",
+        "extras": {
+          "com.termux.RUN_COMMAND_PATH": "/data/data/com.termux/files/usr/bin/bash",
+          "com.termux.RUN_COMMAND_ARGUMENTS": ["-c", "git --no-pager status --short --branch"],
+          "com.termux.RUN_COMMAND_WORKDIR": "{repo}",
+          "com.termux.RUN_COMMAND_BACKGROUND": true
+        },
+        "result": {
+          "pendingIntentExtra": "com.termux.RUN_COMMAND_PENDING_INTENT",
+          "bundleExtra": "result",
+          "outputKey": "stdout",
+          "errorOutputKey": "stderr",
+          "exitCodeKey": "exitCode",
+          "errorCodeKey": "err",
+          "errorCodeOk": -1,
+          "errorMessageKey": "errmsg"
+        },
+        "timeoutMs": 60000
+      }
+    },
+    {
+      "name": "git_diff",
+      "description": "Show all changes since the last commit, staged and not staged, for the whole repo or one path (git diff HEAD). Read only.",
+      "params": [
+        {"name": "repo", "description": "Folder of the git repo inside Termux.", "required": true, "maxLength": 300},
+        {"name": "path", "description": "One file or folder inside the repo. The whole repo when left out.", "required": false, "maxLength": 300}
+      ],
+      "action": {
+        "kind": "android-service",
+        "package": "com.termux",
+        "class": "com.termux.app.RunCommandService",
+        "intentAction": "com.termux.RUN_COMMAND",
+        "extras": {
+          "com.termux.RUN_COMMAND_PATH": "/data/data/com.termux/files/usr/bin/bash",
+          "com.termux.RUN_COMMAND_ARGUMENTS": ["-c", "if [ -n \"$1\" ]; then set -- -- \"$1\"; else set --; fi; git --no-pager diff HEAD \"$@\"", "git", "{path}"],
+          "com.termux.RUN_COMMAND_WORKDIR": "{repo}",
+          "com.termux.RUN_COMMAND_BACKGROUND": true
+        },
+        "result": {
+          "pendingIntentExtra": "com.termux.RUN_COMMAND_PENDING_INTENT",
+          "bundleExtra": "result",
+          "outputKey": "stdout",
+          "errorOutputKey": "stderr",
+          "exitCodeKey": "exitCode",
+          "errorCodeKey": "err",
+          "errorCodeOk": -1,
+          "errorMessageKey": "errmsg"
+        },
+        "timeoutMs": 60000
+      }
+    },
+    {
+      "name": "git_log",
+      "description": "Show the last 20 commits, one line each (git log --oneline). Read only.",
+      "params": [
+        {"name": "repo", "description": "Folder of the git repo inside Termux.", "required": true, "maxLength": 300}
+      ],
+      "action": {
+        "kind": "android-service",
+        "package": "com.termux",
+        "class": "com.termux.app.RunCommandService",
+        "intentAction": "com.termux.RUN_COMMAND",
+        "extras": {
+          "com.termux.RUN_COMMAND_PATH": "/data/data/com.termux/files/usr/bin/bash",
+          "com.termux.RUN_COMMAND_ARGUMENTS": ["-c", "git --no-pager log --oneline --decorate -n 20"],
+          "com.termux.RUN_COMMAND_WORKDIR": "{repo}",
+          "com.termux.RUN_COMMAND_BACKGROUND": true
+        },
+        "result": {
+          "pendingIntentExtra": "com.termux.RUN_COMMAND_PENDING_INTENT",
+          "bundleExtra": "result",
+          "outputKey": "stdout",
+          "errorOutputKey": "stderr",
+          "exitCodeKey": "exitCode",
+          "errorCodeKey": "err",
+          "errorCodeOk": -1,
+          "errorMessageKey": "errmsg"
+        },
+        "timeoutMs": 60000
+      }
+    },
+    {
+      "name": "git_pull",
+      "description": "Fetch and fast-forward the current branch from its remote (git pull --ff-only). Never makes a merge commit.",
+      "params": [
+        {"name": "repo", "description": "Folder of the git repo inside Termux.", "required": true, "maxLength": 300}
+      ],
+      "action": {
+        "kind": "android-service",
+        "package": "com.termux",
+        "class": "com.termux.app.RunCommandService",
+        "intentAction": "com.termux.RUN_COMMAND",
+        "extras": {
+          "com.termux.RUN_COMMAND_PATH": "/data/data/com.termux/files/usr/bin/bash",
+          "com.termux.RUN_COMMAND_ARGUMENTS": ["-c", "GIT_TERMINAL_PROMPT=0 git --no-pager pull --ff-only"],
+          "com.termux.RUN_COMMAND_WORKDIR": "{repo}",
+          "com.termux.RUN_COMMAND_BACKGROUND": true
+        },
+        "result": {
+          "pendingIntentExtra": "com.termux.RUN_COMMAND_PENDING_INTENT",
+          "bundleExtra": "result",
+          "outputKey": "stdout",
+          "errorOutputKey": "stderr",
+          "exitCodeKey": "exitCode",
+          "errorCodeKey": "err",
+          "errorCodeOk": -1,
+          "errorMessageKey": "errmsg"
+        },
+        "timeoutMs": 120000
+      }
+    },
+    {
+      "name": "git_add",
+      "description": "Stage every change in the repo, new and deleted files included (git add -A).",
+      "params": [
+        {"name": "repo", "description": "Folder of the git repo inside Termux.", "required": true, "maxLength": 300}
+      ],
+      "action": {
+        "kind": "android-service",
+        "package": "com.termux",
+        "class": "com.termux.app.RunCommandService",
+        "intentAction": "com.termux.RUN_COMMAND",
+        "extras": {
+          "com.termux.RUN_COMMAND_PATH": "/data/data/com.termux/files/usr/bin/bash",
+          "com.termux.RUN_COMMAND_ARGUMENTS": ["-c", "git add -A"],
+          "com.termux.RUN_COMMAND_WORKDIR": "{repo}",
+          "com.termux.RUN_COMMAND_BACKGROUND": true
+        },
+        "result": {
+          "pendingIntentExtra": "com.termux.RUN_COMMAND_PENDING_INTENT",
+          "bundleExtra": "result",
+          "outputKey": "stdout",
+          "errorOutputKey": "stderr",
+          "exitCodeKey": "exitCode",
+          "errorCodeKey": "err",
+          "errorCodeOk": -1,
+          "errorMessageKey": "errmsg"
+        },
+        "timeoutMs": 60000
+      }
+    },
+    {
+      "name": "git_commit",
+      "description": "Commit what is staged with the given message (git commit -m). Stage first with git_add.",
+      "params": [
+        {"name": "repo", "description": "Folder of the git repo inside Termux.", "required": true, "maxLength": 300},
+        {"name": "message", "description": "The commit message.", "required": true, "maxLength": 1000}
+      ],
+      "action": {
+        "kind": "android-service",
+        "package": "com.termux",
+        "class": "com.termux.app.RunCommandService",
+        "intentAction": "com.termux.RUN_COMMAND",
+        "extras": {
+          "com.termux.RUN_COMMAND_PATH": "/data/data/com.termux/files/usr/bin/bash",
+          "com.termux.RUN_COMMAND_ARGUMENTS": ["-c", "git commit -m \"$1\"", "git", "{message}"],
+          "com.termux.RUN_COMMAND_WORKDIR": "{repo}",
+          "com.termux.RUN_COMMAND_BACKGROUND": true
+        },
+        "result": {
+          "pendingIntentExtra": "com.termux.RUN_COMMAND_PENDING_INTENT",
+          "bundleExtra": "result",
+          "outputKey": "stdout",
+          "errorOutputKey": "stderr",
+          "exitCodeKey": "exitCode",
+          "errorCodeKey": "err",
+          "errorCodeOk": -1,
+          "errorMessageKey": "errmsg"
+        },
+        "timeoutMs": 60000
+      }
+    },
+    {
+      "name": "git_push",
+      "description": "Push the current branch to its remote (git push). Fails instead of asking for a password if Termux has no saved credentials.",
+      "params": [
+        {"name": "repo", "description": "Folder of the git repo inside Termux.", "required": true, "maxLength": 300}
+      ],
+      "action": {
+        "kind": "android-service",
+        "package": "com.termux",
+        "class": "com.termux.app.RunCommandService",
+        "intentAction": "com.termux.RUN_COMMAND",
+        "extras": {
+          "com.termux.RUN_COMMAND_PATH": "/data/data/com.termux/files/usr/bin/bash",
+          "com.termux.RUN_COMMAND_ARGUMENTS": ["-c", "GIT_TERMINAL_PROMPT=0 git --no-pager push"],
+          "com.termux.RUN_COMMAND_WORKDIR": "{repo}",
+          "com.termux.RUN_COMMAND_BACKGROUND": true
+        },
+        "result": {
+          "pendingIntentExtra": "com.termux.RUN_COMMAND_PENDING_INTENT",
+          "bundleExtra": "result",
+          "outputKey": "stdout",
+          "errorOutputKey": "stderr",
+          "exitCodeKey": "exitCode",
+          "errorCodeKey": "err",
+          "errorCodeOk": -1,
+          "errorMessageKey": "errmsg"
+        },
+        "timeoutMs": 120000
+      }
+    }
+  ]
+}
