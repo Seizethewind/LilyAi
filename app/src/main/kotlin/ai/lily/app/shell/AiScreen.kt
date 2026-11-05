@@ -8,6 +8,7 @@ import ai.lily.app.gateway.RouterKind
 import ai.lily.app.gateway.RouterModels
 import ai.lily.app.settings.AppSettings
 import ai.lily.app.settings.EncryptedSettingsStore
+import ai.lily.app.settings.LilyProfile
 import ai.lily.app.ui.Banner
 import ai.lily.app.ui.ButtonKind
 import ai.lily.app.ui.ChoiceChip
@@ -67,8 +68,8 @@ import kotlinx.coroutines.launch
 import java.util.UUID
 
 /**
- * What the AI section shows and changes: the two routers, the models each one offers, and the workers. Every change is saved
- * to the encrypted store at once, and [onChanged] tells the app to rebuild Lily so she uses it from her next answer.
+ * What the AI section shows and changes: Lily's own profile, the two routers, the models each one offers, and the workers. Every
+ * change is saved to the encrypted store at once, and [onChanged] tells the app to rebuild Lily so she uses it from her next answer.
  * The app holds one of these, so the models already loaded are still there after the person leaves the AI tab.
  */
 class AiState(private val store: EncryptedSettingsStore, private val onChanged: () -> Unit) {
@@ -139,6 +140,9 @@ class AiState(private val store: EncryptedSettingsStore, private val onChanged: 
     }
 
     fun remove(id: String) = commit(settings.copy(workers = settings.workers.filter { it.id != id }))
+
+    /** Saves Lily's own profile. The app rebuilds her at once, so the new name, rules, router and model apply from her next answer. */
+    fun saveLily(lily: LilyProfile) = commit(settings.copy(lily = lily))
 
     /**
      * Makes [count] workers from a template, giving each a different model from the loaded lists (reusing them in turn when

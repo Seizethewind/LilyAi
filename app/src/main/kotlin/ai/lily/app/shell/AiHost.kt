@@ -1,11 +1,6 @@
 package ai.lily.app.shell
 
-import ai.lily.app.ui.EmptyState
-import ai.lily.app.ui.LilyIconButton
-import ai.lily.app.ui.LilyMark
 import ai.lily.app.ui.LilyUi
-import ai.lily.app.ui.ScreenFrame
-import ai.lily.app.ui.ScreenHeader
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.Arrangement
@@ -21,7 +16,6 @@ import androidx.compose.foundation.selection.selectable
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Build
-import androidx.compose.material.icons.filled.Menu
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Share
@@ -106,16 +100,7 @@ private fun AiPageBody(state: AiState, page: AiPage, onMenu: (() -> Unit)?, onPi
     when (page) {
         AiPage.Workers, AiPage.Routers -> AiScreen(state, page, onMenu)
         AiPage.Models -> ModelsScreen(state, onMenu, onRouters = { onPick(AiPage.Routers) })
-        AiPage.Lily -> SoonPage(page, onMenu)
-    }
-}
-
-/** Stands in for a page that is built in a later step, so the drawer already lists all four. */
-@Composable
-private fun SoonPage(page: AiPage, onMenu: (() -> Unit)?) {
-    ScreenFrame {
-        ScreenHeader(page.label, actions = { if (onMenu != null) LilyIconButton(Icons.Filled.Menu, "Open AI menu", onMenu) })
-        EmptyState(title = "Coming next", message = "This page arrives in the next step of the AI update.")
+        AiPage.Lily -> LilyScreen(state, onMenu)
     }
 }
 
@@ -125,27 +110,28 @@ private fun AiDrawerBody(state: AiState, current: AiPage, onPick: (AiPage) -> Un
     val loaded = state.models.values.sumOf { it.size }
     Column(Modifier.padding(horizontal = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
         Row(Modifier.padding(start = 8.dp, top = 20.dp, bottom = 16.dp), verticalAlignment = Alignment.CenterVertically) {
-            LilyMark(size = 40.dp)
+            LilyAvatar(settings.lily.photoPath, 40.dp)
             Spacer(Modifier.width(12.dp))
             Column {
-                Text("Lily", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground)
+                Text(settings.lily.name, style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text("AI", style = MaterialTheme.typography.bodySmall, color = LilyUi.colors.textDim)
             }
         }
         for (page in AiPage.values()) {
+            val label = if (page == AiPage.Lily) settings.lily.name else page.label
             val subtitle = when (page) {
                 AiPage.Lily -> "Profile and instructions"
                 AiPage.Workers -> if (settings.workers.isEmpty()) "Built-in workers" else "${settings.workers.size} created"
                 AiPage.Routers -> if (settings.router2 != null) "2 routers" else "1 router"
                 AiPage.Models -> if (loaded == 0) "Not loaded yet" else "$loaded models"
             }
-            DrawerItem(page, subtitle, selected = page == current, onClick = { onPick(page) })
+            DrawerItem(page, label, subtitle, selected = page == current, onClick = { onPick(page) })
         }
     }
 }
 
 @Composable
-private fun DrawerItem(page: AiPage, subtitle: String, selected: Boolean, onClick: () -> Unit) {
+private fun DrawerItem(page: AiPage, label: String, subtitle: String, selected: Boolean, onClick: () -> Unit) {
     val c = LilyUi.colors
     val s = MaterialTheme.colorScheme
     Row(
@@ -161,7 +147,7 @@ private fun DrawerItem(page: AiPage, subtitle: String, selected: Boolean, onClic
         Icon(page.icon, contentDescription = null, tint = if (selected) s.primary else c.textDim, modifier = Modifier.size(22.dp))
         Spacer(Modifier.width(16.dp))
         Column {
-            Text(page.label, style = MaterialTheme.typography.titleSmall, color = if (selected) s.primary else s.onBackground)
+            Text(label, style = MaterialTheme.typography.titleSmall, color = if (selected) s.primary else s.onBackground, maxLines = 1, overflow = TextOverflow.Ellipsis)
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = c.textDim, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
