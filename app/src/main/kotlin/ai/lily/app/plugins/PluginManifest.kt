@@ -3,6 +3,9 @@ package ai.lily.app.plugins
 /**
  * What a plugin declares. A plugin is data only: the app never loads or runs code from a plugin.
  * Everything a plugin can do goes through a bridge the app provides, and only after the person allows it.
+ *
+ * [author], [icon] and [accent] only change how its card looks. [icon] is an emoji or one to four characters, [accent] is a
+ * colour like #1A2B3C; both may be empty, and then the card derives them (see [PluginLooks]).
  */
 data class PluginManifest(
     val id: String,
@@ -13,6 +16,9 @@ data class PluginManifest(
     val tools: List<PluginToolSpec>,
     val promptCommands: List<PromptCommand>,
     val snippets: List<Snippet>,
+    val author: String = "",
+    val icon: String = "",
+    val accent: String = "",
 )
 
 /** Something a plugin asks the person to allow. */
