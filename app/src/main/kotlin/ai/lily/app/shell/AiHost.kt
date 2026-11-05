@@ -82,7 +82,7 @@ fun AiHost(state: AiState, nav: AiNav, modifier: Modifier = Modifier) {
                 PermanentDrawerSheet(Modifier.width(280.dp), drawerContainerColor = LilyUi.colors.raised) { AiDrawerBody(state, nav.page, pick) }
             },
             modifier = modifier,
-        ) { AiPageBody(state, nav.page, onMenu = null) }
+        ) { AiPageBody(state, nav.page, onMenu = null, onPick = pick) }
     } else {
         val drawer = rememberDrawerState(DrawerValue.Closed)
         LaunchedEffect(nav.menuOpen) { if (nav.menuOpen) drawer.open() else drawer.close() }
@@ -97,15 +97,16 @@ fun AiHost(state: AiState, nav: AiNav, modifier: Modifier = Modifier) {
             drawerState = drawer,
             gesturesEnabled = false,
             scrimColor = Color.Black.copy(alpha = 0.5f),
-        ) { AiPageBody(state, nav.page, onMenu = { nav.menuOpen = true }) }
+        ) { AiPageBody(state, nav.page, onMenu = { nav.menuOpen = true }, onPick = pick) }
     }
 }
 
 @Composable
-private fun AiPageBody(state: AiState, page: AiPage, onMenu: (() -> Unit)?) {
+private fun AiPageBody(state: AiState, page: AiPage, onMenu: (() -> Unit)?, onPick: (AiPage) -> Unit) {
     when (page) {
         AiPage.Workers, AiPage.Routers -> AiScreen(state, page, onMenu)
-        AiPage.Lily, AiPage.Models -> SoonPage(page, onMenu)
+        AiPage.Models -> ModelsScreen(state, onMenu, onRouters = { onPick(AiPage.Routers) })
+        AiPage.Lily -> SoonPage(page, onMenu)
     }
 }
 
