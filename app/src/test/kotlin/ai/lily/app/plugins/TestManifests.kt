@@ -67,3 +67,67 @@ class RecordingGate(var answer: Boolean) : ConfirmationGate {
         return answer
     }
 }
+
+// A tool's action is now either an android-service or an http one. These let the older tests read the service fields.
+val ToolAction.packageName: String get() = (this as ServiceAction).packageName
+val ToolAction.extras: Map<String, ExtraValue> get() = (this as ServiceAction).extras
+val ToolAction.result: ResultSpec? get() = (this as ServiceAction).result
+val ToolAction.timeoutMs: Long get() = (this as ServiceAction).timeoutMs
+
+class FakeHttpBridge : HttpBridge {
+    var reply: HttpReply = HttpReply.Done(200, "{}", false)
+    var failure: Throwable? = null
+    val calls = mutableListOf<HttpCall>()
+
+    override suspend fun call(call: HttpCall): HttpReply {
+        calls += call
+        failure?.let { throw it }
+        return reply
+    }
+}
+
+/** Builds small http plugin manifests for tests. The one tool is called "call"; its secret setting is "token". */
+object HttpManifests {
+    const val ID = "http.plugin"
+    const val HOST_PERMISSION = "http:api.example.com"
+    const val TOKEN = "tok_12345678"
+    const val DEFAULT_PARAMS = """[{"name":"repo","description":"repo","required":true,"maxLength":50},{"name":"title","description":"title","required":false,"maxLength":200}]"""
+    const val DEFAULT_SETTINGS = """[{"name":"token","label":"Token","secret":true}]"""
+
+    fun json(
+        permissions: String = "\"$HOST_PERMISSION\"",
+        settings: String = DEFAULT_SETTINGS,
+        params: String = DEFAULT_PARAMS,
+        method: String = "POST",
+        url: String = "https://api.example.com/repos/{repo}/pulls",
+        headers: String = """{"Authorization":"Bearer {secret.token}"}""",
+        body: String = """{"title":"{title}","draft":true}""",
+        untrusted: Boolean = false,
+    ): String = """
+        {
+          "schema": 1,
+          "id": "$ID",
+          "name": "Http test",
+          "version": "1.0.0",
+          "description": "An http plugin for tests",
+          "permissions": [$permissions],
+          "settings": $settings,
+          "tools": [
+            {
+              "name": "call",
+              "description": "Calls the api",
+              "params": $params,
+              "action": {
+                "kind": "http",
+                "method": "$method",
+                "url": "$url",
+                "headers": $headers,
+                "body": $body,
+                "timeoutMs": 5000,
+                "untrusted": $untrusted
+              }
+            }
+          ]
+        }
+    """.trimIndent()
+}
