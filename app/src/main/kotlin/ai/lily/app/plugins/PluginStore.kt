@@ -102,8 +102,7 @@ class DiskPluginStore(private val dir: File) : PluginStore {
             if (f.name != manifest.id + EXT) return null
             val requested = manifest.permissions.map { it.key }.toSet()
             val granted = strings(json.optJSONArray("granted")).intersect(requested)
-            val toolNames = manifest.tools.map { it.name }.toSet()
-            val auto = strings(json.optJSONArray("autoApprove")).intersect(toolNames)
+            val auto = strings(json.optJSONArray("autoApprove")).intersect(manifest.toolNames())
             return InstalledPlugin(manifest, text, PluginState(json.optBoolean("enabled", false), granted, auto))
         } catch (e: Exception) {
             return null

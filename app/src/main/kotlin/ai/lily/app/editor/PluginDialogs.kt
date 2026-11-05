@@ -1,11 +1,12 @@
 package ai.lily.app.editor
 
+import ai.lily.app.plugins.HttpPermission
 import ai.lily.app.plugins.InstallResult
 import ai.lily.app.plugins.InstalledPlugin
 import ai.lily.app.plugins.Permission
+import ai.lily.app.plugins.PluginSecret
 import ai.lily.app.plugins.PluginServices
 import ai.lily.app.plugins.PromptGate
-import ai.lily.app.plugins.SettingSpec
 import ai.lily.app.plugins.Visible
 import ai.lily.app.ui.Banner
 import ai.lily.app.ui.ButtonKind
@@ -53,17 +54,11 @@ private fun ConfirmRunDialog(pending: PromptGate.Pending, gate: PromptGate) {
         onDismissRequest = { gate.answer(false) },
         containerColor = c.raised,
         shape = RoundedCornerShape(24.dp),
-        title = { Text(if (r.isHttp) "Send this request?" else "Run this command?", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground) },
+        title = { Text("Run this command?", style = MaterialTheme.typography.titleLarge, color = MaterialTheme.colorScheme.onBackground) },
         text = {
             Column(Modifier.verticalScroll(rememberScrollState()), verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 Text(
-                    if (r.isHttp) {
-                        "${r.pluginName} wants to send a request to ${r.targetPackage} with ${r.toolName}. " +
-                            (if (r.changes) "It changes something there. " else "") +
-                            "Secrets are hidden here and never shown to Lily. Nothing is sent unless you approve."
-                    } else {
-                        "${r.pluginName} wants to use ${r.toolName} in ${r.targetPackage}. Nothing runs unless you approve."
-                    },
+                    "${r.pluginName} wants to use ${r.toolName} in ${r.targetPackage}. Nothing runs unless you approve.",
                     style = MaterialTheme.typography.bodyMedium,
                     color = c.textDim,
                 )
@@ -80,8 +75,8 @@ private fun ConfirmRunDialog(pending: PromptGate.Pending, gate: PromptGate) {
                 }
             }
         },
-        confirmButton = { LilyButton(if (r.isHttp) "Send" else "Run", onClick = { gate.answer(true) }) },
-        dismissButton = { LilyButton(if (r.isHttp) "Don't send" else "Don't run", onClick = { gate.answer(false) }, kind = ButtonKind.Quiet) },
+        confirmButton = { LilyButton("Run", onClick = { gate.answer(true) }) },
+        dismissButton = { LilyButton("Don't run", onClick = { gate.answer(false) }, kind = ButtonKind.Quiet) },
     )
 }
 
@@ -124,7 +119,7 @@ internal fun PluginDetailBody(plugin: InstalledPlugin, services: PluginServices)
                 for (permission in manifest.permissions) {
                     Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                         Text(
-                            permissionText(permission),
+                            permissionLabel(permission),
                             style = MaterialTheme.typography.bodyMedium,
                             color = MaterialTheme.colorScheme.onBackground,
                             modifier = Modifier.weight(1f).padding(end = 12.dp),
@@ -134,38 +129,62 @@ internal fun PluginDetailBody(plugin: InstalledPlugin, services: PluginServices)
                 }
             }
         }
-        if (manifest.settings.isNotEmpty()) {
+        if (manifest.secrets.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
-                SmallHeading("Settings")
-                Text(
-                    "Saved on this phone, encrypted. A secret is never shown again and never given to Lily; a tool only sends it when you approve a request.",
-                    style = MaterialTheme.typography.bodySmall,
-                    color = c.textDim,
-                )
-                for (spec in manifest.settings) SettingField(manifest.id, spec, services)
+                SmallHeading("Secrets")
+                for (secret in manifest.secrets) SecretField(manifest.id, secret, services)
             }
         }
-        if (manifest.tools.isNotEmpty()) {
+        val rows = manifest.tools.map { Triple(it.name, it.description, true) } +
+            manifest.httpTools.map { Triple(it.name, it.description, it.action.method == "GET") }
+        if (rows.isNotEmpty()) {
             Column(verticalArrangement = Arrangement.spacedBy(12.dp)) {
                 SmallHeading("Tools")
-                for (tool in manifest.tools) {
-                    val allowed = tool.action.permissionKey in plugin.state.granted
+                for ((toolName, description, canSkipAsking) in rows) {
+                    val allowed = manifest.permissionKeyOf(toolName)?.let { it in plugin.state.granted } == true
                     Column {
-                        Text(tool.name, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground)
-                        Text(tool.description, style = MaterialTheme.typography.bodySmall, color = c.textDim)
-                        if (allowed && tool.action.alwaysAsks) {
-                            Text("Always asks before it sends, because it changes something.", style = MaterialTheme.typography.bodySmall, color = c.textDim, modifier = Modifier.padding(top = 4.dp))
-                        } else if (allowed) {
+                        Text(toolName, style = MaterialTheme.typography.bodyMedium, color = MaterialTheme.colorScheme.onBackground)
+                        Text(description, style = MaterialTheme.typography.bodySmall, color = c.textDim)
+                        if (allowed && canSkipAsking) {
                             Row(Modifier.fillMaxWidth().heightIn(min = 48.dp), verticalAlignment = Alignment.CenterVertically) {
                                 Text("Run without asking each time", style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onBackground, modifier = Modifier.weight(1f).padding(end = 12.dp))
-                                LilySwitch(tool.name in plugin.state.autoApprove, { on -> services.setAutoApprove(manifest.id, tool.name, on) })
+                                LilySwitch(toolName in plugin.state.autoApprove, { on -> services.setAutoApprove(manifest.id, toolName, on) })
                             }
+                        } else if (allowed) {
+                            Text("Always asks first: it changes something online.", style = MaterialTheme.typography.bodySmall, color = c.textFaint, modifier = Modifier.padding(top = 4.dp))
                         } else {
                             Text("Turn on the permission above to use this tool.", style = MaterialTheme.typography.bodySmall, color = c.textFaint, modifier = Modifier.padding(top = 4.dp))
                         }
                     }
                 }
             }
+        }
+    }
+}
+
+/** One secret a plugin declared. The saved value is never shown; typing a new one replaces it. */
+@Composable
+private fun SecretField(pluginId: String, secret: PluginSecret, services: PluginServices) {
+    var text by remember { mutableStateOf("") }
+    val isSet = remember(services.version) { services.secrets.get(pluginId, secret.name) != null }
+    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
+        LilyTextField(
+            value = text,
+            onValueChange = { text = it },
+            label = secret.label,
+            helper = if (isSet) "Saved. Type a new value to replace it." else "Not set yet. Kept encrypted on this phone.",
+            mono = true,
+        )
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            LilyButton(
+                "Save",
+                enabled = text.isNotBlank(),
+                onClick = {
+                    services.setSecret(pluginId, secret.name, text.trim())
+                    text = ""
+                },
+            )
+            if (isSet) LilyButton("Remove", onClick = { services.setSecret(pluginId, secret.name, "") }, kind = ButtonKind.Quiet)
         }
     }
 }
@@ -206,61 +225,9 @@ internal fun AddPluginSheet(services: PluginServices, onDismiss: () -> Unit, onD
     }
 }
 
-private fun permissionText(permission: Permission): String = when (permission) {
+private fun permissionLabel(permission: Permission): String = when (permission) {
     is Permission.ExternalApp -> "Start a service in ${permission.packageName}"
-    is Permission.Http -> "Send https requests to ${permission.host}${permission.pathPrefix}"
-}
-
-/** One value the person fills in. A saved secret is never shown: the field starts empty and a new value replaces it. */
-@Composable
-private fun SettingField(pluginId: String, spec: SettingSpec, services: PluginServices) {
-    var text by remember(pluginId, spec.name) { mutableStateOf(services.plainSetting(pluginId, spec)) }
-    var error by remember(pluginId, spec.name) { mutableStateOf<String?>(null) }
-    val saved = remember(services.version, pluginId, spec.name) { services.hasSetting(pluginId, spec.name) }
-    Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
-        LilyTextField(
-            value = text,
-            onValueChange = {
-                text = it
-                error = null
-            },
-            label = if (spec.required) spec.label else "${spec.label} (optional)",
-            error = error,
-            helper = when {
-                spec.secret && saved -> "A value is saved and hidden. Type a new one to replace it."
-                spec.description.isNotEmpty() -> spec.description
-                else -> null
-            },
-            secret = spec.secret,
-            mono = spec.secret,
-        )
-        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
-            LilyButton(
-                "Save",
-                enabled = text.isNotBlank(),
-                kind = ButtonKind.Tonal,
-                onClick = {
-                    val problem = spec.problemWith(text)
-                    if (problem != null) {
-                        error = problem
-                    } else {
-                        services.saveSetting(pluginId, spec, text)
-                        if (spec.secret) text = ""
-                    }
-                },
-            )
-            if (saved) {
-                LilyButton(
-                    "Clear",
-                    kind = ButtonKind.Quiet,
-                    onClick = {
-                        services.clearSetting(pluginId, spec.name)
-                        text = ""
-                    },
-                )
-            }
-        }
-    }
+    is HttpPermission -> "Send web requests to ${permission.host}${permission.pathPrefix}"
 }
 
 private fun summary(result: InstallResult.Installed): String = buildString {
