@@ -100,8 +100,10 @@ class EditorActivity : ComponentActivity() {
         val ui = EditorUi()
         val session = AgentSession(state)
 
-        // Plugins: installed ones are kept in the app's `plugins` folder. The bundled ones (Termux) arrive off, with nothing allowed.
+        // Plugins: installed ones are kept in the app's `plugins` folder. The bundled ones (Termux, Git control) arrive off, with nothing allowed.
         val plugins = PluginServices(applicationContext).also { it.installBundled() }
+        // Git control for the person: the same Termux git tools Lily's workers get, behind a dialog in the command palette.
+        val git = GitState(applicationContext, plugins, lifecycleScope)
 
         // Which section shows, and the browser page that stays alive while another section is open.
         val nav = ShellNav()
@@ -112,7 +114,7 @@ class EditorActivity : ComponentActivity() {
         // Termux's run-command permission is a runtime one: declaring it is not enough, Android must be asked.
         val termuxPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { }
         fun askTermuxPermission() {
-            val on = plugins.registry.get("lily.termux")?.state?.enabled == true
+            val on = listOf("lily.termux", GitState.ID).any { plugins.registry.get(it)?.state?.enabled == true }
             if (on && checkSelfPermission(TERMUX_RUN_COMMAND) != PackageManager.PERMISSION_GRANTED) {
                 termuxPermission.launch(TERMUX_RUN_COMMAND)
             }
@@ -178,6 +180,7 @@ class EditorActivity : ComponentActivity() {
         // Extra entries in the command palette.
         val extraCommands = listOf(
             ExtraCommand("Ask Lily") { ui.ask = true; askTermuxPermission() },
+            ExtraCommand("Git control") { git.open = true; askTermuxPermission() },
             ExtraCommand("Remote workspaces") { remoteUi.manager = true },
             ExtraCommand("Plugins") { nav.section = Section.Plugins; askTermuxPermission() },
             ExtraCommand("New folder") { ui.dialog = WsDialog.NewFolder },
@@ -215,6 +218,7 @@ class EditorActivity : ComponentActivity() {
                                 WorkspaceDialogs(ops, ui)
                                 RemoteBanner(Modifier.align(Alignment.TopCenter))
                                 RemoteDialogs(remoteUi)
+                                GitDialog(git)
                             }
                             Section.Chat -> ChatScreen(chat, queue, onReview = {
                                 session.startReview()
