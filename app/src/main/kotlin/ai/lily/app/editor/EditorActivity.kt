@@ -129,7 +129,7 @@ class EditorActivity : ComponentActivity() {
         fun currentLily(): Lily {
             val wanted = plugins.version
             return lily.takeIf { builtFor == wanted } ?: LilyFactory.create(
-                settingsStore.load(), session.bridge, root, plugins.host,
+                settingsStore.load(), session.bridge, root, plugins.host, gitRepo = { git.repo.trim() },
             ).also {
                 lily = it
                 builtFor = wanted
