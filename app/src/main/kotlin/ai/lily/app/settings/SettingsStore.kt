@@ -51,6 +51,7 @@ class EncryptedSettingsStore(context: Context) : SettingsStore {
                 )
             },
             workers = WorkerProfiles.fromJson(get("workers_json")),
+            lily = LilyProfile.read { get(it) },
             journalDb = get("journal_url").takeIf { it.isNotBlank() }
                 ?.let { TursoConfig(it, get("journal_token")) },
             factsDb = get("facts_url").takeIf { it.isNotBlank() }
@@ -94,6 +95,11 @@ class EncryptedSettingsStore(context: Context) : SettingsStore {
             .putString("router2_name", settings.router2?.name.orEmpty())
             .putString("router2_kind", settings.router2?.kind?.id.orEmpty())
             .putString("workers_json", WorkerProfiles.toJson(settings.workers))
+            .putString("lily_name", settings.lily.name)
+            .putString("lily_instructions", settings.lily.instructions)
+            .putString("lily_router", settings.lily.router.toString())
+            .putString("lily_model", settings.lily.model)
+            .putString("lily_photo", settings.lily.photoPath)
             .putString("journal_url", settings.journalDb?.url.orEmpty())
             .putString("journal_token", settings.journalDb?.authToken.orEmpty())
             .putString("facts_url", settings.factsDb?.url.orEmpty())
