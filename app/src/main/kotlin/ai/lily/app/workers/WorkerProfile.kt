@@ -11,6 +11,7 @@ import org.json.JSONObject
  * One worker the person (or Lily) created: what it is for, which router and model it uses, and the instructions that
  * shape its answers. [router] is 0 for the first router and 1 for the second. Several workers can share a role.
  * [byLily] marks a worker Lily made herself: she may dismiss those, and never the ones the person made.
+ * [iconKey] and [colorKey] are keys from [WorkerLook]; blank means the role's own icon and colour.
  */
 data class WorkerProfile(
     val id: String,
@@ -21,6 +22,8 @@ data class WorkerProfile(
     val instructions: String,
     val enabled: Boolean = true,
     val byLily: Boolean = false,
+    val iconKey: String = "",
+    val colorKey: String = "",
 )
 
 /** A starting point for a worker: a role and the instructions that fit it. */
@@ -81,7 +84,7 @@ object WorkerProfiles {
                 JSONObject()
                     .put("id", p.id).put("name", p.name).put("role", p.role.name).put("router", p.router)
                     .put("model", p.model).put("instructions", p.instructions).put("enabled", p.enabled)
-                    .put("byLily", p.byLily),
+                    .put("byLily", p.byLily).put("icon", p.iconKey).put("color", p.colorKey),
             )
         }
     }.toString()
@@ -101,6 +104,8 @@ object WorkerProfiles {
                     instructions = o.optString("instructions", ""),
                     enabled = o.optBoolean("enabled", true),
                     byLily = o.optBoolean("byLily", false),
+                    iconKey = o.optString("icon", ""),
+                    colorKey = o.optString("color", ""),
                 )
             }.getOrNull()
         }.filter { it.role != WorkerType.TEAM }
