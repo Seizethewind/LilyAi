@@ -143,8 +143,9 @@ class AiState(private val store: EncryptedSettingsStore, private val onChanged: 
     /**
      * Makes [count] workers from a template, giving each a different model from the loaded lists (reusing them in turn when
      * there are fewer models than workers). [routers] is 0 or 1 for one router, 2 for both. Only models whose id contains [filter] are used.
+     * [iconKey] and [colorKey] are given to every worker made; blank leaves each with its role's look.
      */
-    fun createMany(template: WorkerTemplate, count: Int, filter: String, routers: Int): String {
+    fun createMany(template: WorkerTemplate, count: Int, filter: String, routers: Int, iconKey: String = "", colorKey: String = ""): String {
         val f = filter.trim().lowercase()
         fun pool(i: Int) = models[i].orEmpty().filter { f.isEmpty() || it.lowercase().contains(f) }.map { i to it }
         val choices = when (routers) {
@@ -160,7 +161,16 @@ class AiState(private val store: EncryptedSettingsStore, private val onChanged: 
         val already = settings.workers.count { it.role == template.role }
         val made = (0 until count).map { i ->
             val (router, model) = choices[i % choices.size]
-            WorkerProfile(UUID.randomUUID().toString(), "${template.label} ${already + i + 1}", template.role, router, model, template.instructions)
+            WorkerProfile(
+                id = UUID.randomUUID().toString(),
+                name = "${template.label} ${already + i + 1}",
+                role = template.role,
+                router = router,
+                model = model,
+                instructions = template.instructions,
+                iconKey = iconKey,
+                colorKey = colorKey,
+            )
         }
         commit(settings.copy(workers = settings.workers + made))
         return "Created ${made.size} ${template.label.lowercase()} workers on ${minOf(count, choices.size)} different models."
@@ -239,6 +249,7 @@ fun AiScreen(state: AiState, page: AiPage, onMenu: (() -> Unit)?, modifier: Modi
                             title = p.name.ifBlank { "(no name)" },
                             subtitle = "${roleLabel(p.role)} · Router ${p.router + 1} · ${p.model.ifBlank { "default model" }}",
                             onClick = { editing = p },
+                            leading = { WorkerBadge(p.role, p.iconKey, p.colorKey) },
                             trailing = { LilySwitch(p.enabled, { on -> state.upsert(p.copy(enabled = on)) }) },
                         )
                         Hairline(Modifier.padding(horizontal = 20.dp))
@@ -399,6 +410,8 @@ private fun WorkerSheet(start: WorkerProfile, state: AiState, onDismiss: () -> U
     var router by remember { mutableStateOf(start.router) }
     var model by remember { mutableStateOf(start.model) }
     var instructions by remember { mutableStateOf(start.instructions) }
+    var iconKey by remember { mutableStateOf(start.iconKey) }
+    var colorKey by remember { mutableStateOf(start.colorKey) }
     var confirmDelete by remember { mutableStateOf(false) }
     val known = state.settings.workers.any { it.id == start.id }
     val offered = state.models[router].orEmpty()
@@ -425,6 +438,7 @@ private fun WorkerSheet(start: WorkerProfile, state: AiState, onDismiss: () -> U
                     for (t in CreatableRoles) ChoiceChip(roleLabel(t), role == t, onClick = { role = t })
                 }
             }
+            LookPicker(role, iconKey, colorKey, onIcon = { iconKey = it }, onColor = { colorKey = it })
             Column(verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 FieldLabel("Router")
                 Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
@@ -466,7 +480,12 @@ private fun WorkerSheet(start: WorkerProfile, state: AiState, onDismiss: () -> U
                 LilyButton(
                     "Save worker",
                     onClick = {
-                        state.upsert(start.copy(name = name.trim(), role = role, router = router, model = model.trim(), instructions = instructions.trim()))
+                        state.upsert(
+                            start.copy(
+                                name = name.trim(), role = role, router = router, model = model.trim(), instructions = instructions.trim(),
+                                iconKey = iconKey, colorKey = colorKey,
+                            ),
+                        )
                         onDismiss()
                     },
                     enabled = name.isNotBlank(),
@@ -499,6 +518,8 @@ private fun CreateSeveralSheet(state: AiState, onDismiss: () -> Unit, onDone: (S
     var count by remember { mutableStateOf("10") }
     var routers by remember { mutableStateOf(2) }
     var filter by remember { mutableStateOf("") }
+    var iconKey by remember { mutableStateOf("") }
+    var colorKey by remember { mutableStateOf("") }
     val noModels = state.models.values.all { it.isEmpty() }
     LilySheet("Create several workers", onDismiss) {
         Column(verticalArrangement = Arrangement.spacedBy(16.dp)) {
@@ -511,6 +532,7 @@ private fun CreateSeveralSheet(state: AiState, onDismiss: () -> Unit, onDone: (S
                     for (t in WorkerTemplates.all) ChoiceChip(t.label, template == t, onClick = { template = t })
                 }
             }
+            LookPicker(template.role, iconKey, colorKey, onIcon = { iconKey = it }, onColor = { colorKey = it })
             LilyTextField(
                 value = count,
                 onValueChange = { count = it.filter(Char::isDigit).take(2) },
@@ -536,7 +558,7 @@ private fun CreateSeveralSheet(state: AiState, onDismiss: () -> Unit, onDone: (S
             Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
                 LilyButton(
                     "Create",
-                    onClick = { onDone(state.createMany(template, (count.toIntOrNull() ?: 1).coerceIn(1, 30), filter, routers)) },
+                    onClick = { onDone(state.createMany(template, (count.toIntOrNull() ?: 1).coerceIn(1, 30), filter, routers, iconKey, colorKey)) },
                 )
                 LilyButton("Cancel", onClick = onDismiss, kind = ButtonKind.Quiet)
             }

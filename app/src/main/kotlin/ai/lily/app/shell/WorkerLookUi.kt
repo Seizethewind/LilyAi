@@ -37,6 +37,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.semantics.Role
+import androidx.compose.ui.semantics.contentDescription
+import androidx.compose.ui.semantics.semantics
 import androidx.compose.ui.unit.dp
 
 /** The Material icon for a [WorkerLook] key. Unknown keys cannot reach here, because [WorkerLook.icon] already falls back. */
@@ -109,18 +111,17 @@ fun LookPicker(role: WorkerType, iconKey: String, colorKey: String, onIcon: (Str
             FlowRow(horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
                 for (key in WorkerLook.colors) {
                     val on = key == shownColor
-                    val tone = workerTone(key)
                     Box(
                         Modifier
                             .size(48.dp)
                             .clip(CircleShape)
                             .border(if (on) 2.dp else 1.dp, if (on) primary else c.hairline, CircleShape)
+                            // A swatch has no text, so a screen reader is given its name here.
+                            .semantics { contentDescription = label(key) }
                             .selectable(selected = on, role = Role.RadioButton, onClick = { onColor(key) }),
                         contentAlignment = Alignment.Center,
                     ) {
-                        // The swatch has no text, so a screen reader needs the name on the disc itself.
-                        Box(Modifier.size(28.dp).clip(CircleShape).background(tone.ink()))
-                        Text(label(key), modifier = Modifier.size(0.dp), color = tone.ink())
+                        Box(Modifier.size(28.dp).clip(CircleShape).background(workerTone(key).ink()))
                     }
                 }
             }
