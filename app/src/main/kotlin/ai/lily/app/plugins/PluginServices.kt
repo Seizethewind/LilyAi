@@ -40,8 +40,7 @@ class PromptGate : ConfirmationGate {
 
 /**
  * The plugin pieces the editor screen needs, built once from the app context: the folder of installed plugins, the
- * registry, the bridge to other apps, the web runner and its encrypted secrets, the on-screen approval, and the host
- * that hands plugin tools to the workers.
+ * registry, the bridge to other apps, the on-screen approval, and the host that hands plugin tools to the workers.
  * [version] goes up whenever the person changes anything, so screens redraw and Lily is rebuilt to see new tools.
  */
 class PluginServices(context: Context) {
@@ -50,9 +49,11 @@ class PluginServices(context: Context) {
     val gate = PromptGate()
     val registry = PluginRegistry(DiskPluginStore(File(app.filesDir, "plugins")))
     private val bridge = AndroidServiceBridge(app)
+
+    /** What the person filled in for plugins, kept encrypted. A secret is never read back to the screen. */
     val secrets: PluginSecrets = EncryptedPluginSecrets(app)
-    private val web = HttpRunner(UrlConnectionTransport(), secrets)
-    val host = PluginHost(registry, bridge, gate, web)
+    private val http = UrlConnectionHttpBridge()
+    val host = PluginHost(registry, bridge, gate, http, secrets)
 
     var version by mutableIntStateOf(0)
         private set
@@ -62,7 +63,7 @@ class PluginServices(context: Context) {
      * result text Lily's workers get. Never throws: a refusal comes back as text starting with "error:" or "denied:".
      */
     suspend fun run(pluginId: String, tool: String, args: Map<String, String>): String =
-        PluginTool(pluginId, tool, registry, bridge, gate, web).execute(args)
+        PluginTool(pluginId, tool, registry, bridge, gate, http, secrets).execute(args)
 
     /** The manifests that ship in assets/plugins, each as (what it says, its text). One that does not parse is left out. */
     fun bundled(): List<Pair<PluginManifest, String>> {
@@ -102,6 +103,23 @@ class PluginServices(context: Context) {
         version++
     }
 
+    /** Whether a value is saved. Safe to show: it says nothing about the value. */
+    fun hasSetting(id: String, name: String): Boolean = !secrets.get(id, name).isNullOrEmpty()
+
+    /** The saved value of a setting that is not a secret, for editing. Never call this for a secret. */
+    fun plainSetting(id: String, spec: SettingSpec): String = if (spec.secret) "" else secrets.get(id, spec.name).orEmpty()
+
+    fun saveSetting(id: String, spec: SettingSpec, value: String) {
+        if (spec.problemWith(value) != null) return
+        secrets.set(id, spec.name, value.trim())
+        version++
+    }
+
+    fun clearSetting(id: String, name: String) {
+        secrets.remove(id, name)
+        version++
+    }
+
     fun setEnabled(id: String, on: Boolean) {
         registry.setEnabled(id, on)
         version++
@@ -114,14 +132,6 @@ class PluginServices(context: Context) {
 
     fun setAutoApprove(id: String, toolName: String, on: Boolean) {
         registry.setAutoApprove(id, toolName, on)
-        version++
-    }
-
-    /** Saves one declared secret of a plugin; an empty value removes it. A name the plugin did not declare is ignored. */
-    fun setSecret(id: String, name: String, value: String) {
-        val declared = registry.get(id)?.manifest?.secrets?.any { it.name == name } == true
-        if (!declared) return
-        if (value.isEmpty()) secrets.remove(id, name) else secrets.set(id, name, value)
         version++
     }
 
