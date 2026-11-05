@@ -32,6 +32,9 @@ Three things stay in the app because Android needs them at build time. They are 
 | `id` | 3 to 64 characters: lowercase letters, digits, dots, hyphens |
 | `name`, `description` | one line, no hidden or direction-changing characters |
 | `version` | `1.2.3` |
+| `author` | optional, up to 60 characters, same character rules as `name` |
+| `icon` | optional, one emoji or one or two letters, shown on the plugin's card. No spaces or invisible characters, so a joined emoji is refused. Without it the card shows the first letter of the name |
+| `accent` | optional, `#RRGGBB`, the colour of the icon tile. Without it the app's petal colour is used |
 | `permissions` | `external-app:<package>`; packages of Lily itself and of Android (`android.*`, `com.android.*`) are refused |
 | `tools[]` | `name`, `description`, `params[]` (`name`, `description`, `required`, `maxLength`), `action` |
 | `tools[].action` | `kind` must be `android-service`; `package` (must be in `permissions`), `class`, `intentAction`, `extras`, optional `result`, `timeoutMs` (1 to 300 seconds) |
@@ -39,6 +42,16 @@ Three things stay in the app because Android needs them at build time. They are 
 | `result` | `pendingIntentExtra`, `bundleExtra`, `outputKey`, and optionally `errorOutputKey`, `exitCodeKey`, `errorCodeKey`, `errorCodeOk`, `errorMessageKey`. Leave it out for fire and forget |
 
 Limits: 64 KB per manifest, 20 tools, 8 params per tool, 20 extras per action. Anything not understood is an error, and every error is listed.
+
+A catalog entry (`plugins/index.json`) may carry the same `author`, `icon` and `accent`. They are only cosmetic, so a bad one is dropped and the entry is still listed.
+
+## The Plugins screen
+
+- **Installed** lists what you have. **All** adds the plugins that ship in the app and the ones the catalog offers, so a plugin you removed can be installed again. The catalog loads when the section opens; its address can be changed on the All tab.
+- Each card shows the icon tile, name, version, author and description. The switch turns the plugin on or off. Install and Uninstall are on the card; Uninstall asks first.
+- Tapping a card opens its page: what the plugin can do, what it is allowed to, and the "don't ask again" switches. A plugin that is not installed shows its facts and an Install button.
+- Installing always adds the plugin **off with nothing allowed**, from the app, the catalog or pasted JSON.
+- Search looks at name, description, author and id.
 
 ## What keeps you in charge
 

@@ -4,6 +4,9 @@
   "name": "Termux",
   "version": "1.0.0",
   "description": "Lets Lily run shell commands in Termux. Each command is shown to you first and runs only if you approve it.",
+  "author": "Lily",
+  "icon": "💻",
+  "accent": "#1F6F5C",
   "permissions": ["external-app:com.termux"],
   "tools": [
     {
