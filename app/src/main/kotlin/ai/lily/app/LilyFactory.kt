@@ -42,6 +42,7 @@ object LilyFactory {
      * [plugins] adds the tools of every plugin that is on and allowed (for example the optional Termux plugin). The app's
      * own tools are registered first, so a plugin can never replace one of them.
      * [roster] is the list of created workers that Lily's own TEAM worker reads and changes. Without it there is no TEAM worker.
+     * [gitRepo] is the repo folder in Termux that the git worker uses when a task names none (the one set in the Git dialog).
      * Workers the person created (settings.workers) take over their role from the built-in worker, each with its own router,
      * model and instructions. A role with no created workers keeps the built-in one.
      * Lily's own rules (settings.lily) are added to every worker's calls and to the planner's, after the caller's own system text.
@@ -53,6 +54,7 @@ object LilyFactory {
         workspaceRoot: File? = null,
         plugins: PluginHost? = null,
         roster: WorkerRoster? = null,
+        gitRepo: () -> String = { "" },
     ): Lily {
         val gateway = RouterModelGateway(settings.router)
         val second: ModelGateway? = settings.router2?.let { RouterModelGateway(it) }
@@ -71,7 +73,7 @@ object LilyFactory {
             WorkerType.CODING -> CodingWorker(g, tools, editor, workspace)
             WorkerType.RESEARCH -> ResearchWorker(g, tools)
             WorkerType.BUILD -> BuildWorker(g, tools)
-            WorkerType.GIT -> GitWorker(g, tools)
+            WorkerType.GIT -> GitWorker(g, tools, gitRepo)
             WorkerType.FILE -> FileWorker(g, tools, editor)
             WorkerType.GENERAL -> GeneralWorker(g, tools)
             WorkerType.TEST -> ModelWorker(WorkerType.TEST, g, tools)
