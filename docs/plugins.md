@@ -35,9 +35,10 @@ Three things stay in the app because Android needs them at build time. They are 
 | `author` | optional, up to 60 characters, same character rules as `name` |
 | `icon` | optional, one emoji or one or two letters, shown on the plugin's card. No spaces or invisible characters, so a joined emoji is refused. Without it the card shows the first letter of the name |
 | `accent` | optional, `#RRGGBB`, the colour of the icon tile. Without it the app's petal colour is used |
-| `permissions` | `external-app:<package>`; packages of Lily itself and of Android (`android.*`, `com.android.*`) are refused |
+| `permissions` | `external-app:<package>` (packages of Lily itself and of Android, `android.*` and `com.android.*`, are refused) or `http:<host>[/<pinned path>]` (see the http capability below) |
+| `settings[]` | optional values the person fills in, for the http capability (see below) |
 | `tools[]` | `name`, `description`, `params[]` (`name`, `description`, `required`, `maxLength`), `action` |
-| `tools[].action` | `kind` must be `android-service`; `package` (must be in `permissions`), `class`, `intentAction`, `extras`, optional `result`, `timeoutMs` (1 to 300 seconds) |
+| `tools[].action` | `kind` is `android-service` or `http`. For `android-service`: `package` (must be in `permissions`), `class`, `intentAction`, `extras`, optional `result`, `timeoutMs` (1 to 300 seconds) |
 | `extras` values | text, text list, true/false or a whole number. Text may contain `{param}`; an unknown `{name}` is an error |
 | `result` | `pendingIntentExtra`, `bundleExtra`, `outputKey`, and optionally `errorOutputKey`, `exitCodeKey`, `errorCodeKey`, `errorCodeOk`, `errorMessageKey`. Leave it out for fire and forget |
 
@@ -49,7 +50,7 @@ A catalog entry (`plugins/index.json`) may carry the same `author`, `icon` and `
 
 - **Installed** lists what you have. **All** adds the plugins that ship in the app and the ones the catalog offers, so a plugin you removed can be installed again. The catalog loads when the section opens; its address can be changed on the All tab.
 - Each card shows the icon tile, name, version, author and description. The switch turns the plugin on or off. Install and Uninstall are on the card; Uninstall asks first.
-- Tapping a card opens its page: what the plugin can do, what it is allowed to, and the "don't ask again" switches. A plugin that is not installed shows its facts and an Install button.
+- Tapping a card opens its page: what the plugin can do, what it is allowed to, its settings, and the "don't ask again" switches. A plugin that is not installed shows its facts and an Install button.
 - Installing always adds the plugin **off with nothing allowed**, from the app, the catalog or pasted JSON.
 - Search looks at name, description, author and id.
 
@@ -73,6 +74,24 @@ A catalog entry (`plugins/index.json`) may carry the same `author`, `icon` and `
 
 The plugin runs commands as background commands (`bash -c`), which is what gives separate stdout, stderr and an exit code. Termux itself cuts results to about 100 KB from the start. The answer travels in a `PendingIntent`, which **must be mutable** (Termux adds the result to it); an immutable one comes back with no result.
 
+## Http capability (phase C)
+
+A plugin can send https requests, so a service such as GitHub or Discord can be a plugin. The app writes and sends the request; the plugin only describes it.
+
+- **Permission** `http:<host>` or `http:<host>/<pinned path>`, for example `http:api.github.com` or `http:discord.com/api/v10/`. One exact lowercase host: no port, no wildcard, no IP address, nothing that names a local network. A pinned path means whole path parts: `/api/v10` allows `/api/v10/x` but not `/api/v100`.
+- **Tool action** `{"kind":"http","method":"GET|POST|PUT|PATCH","url":"https://...","headers":{...},"body":{...},"timeoutMs":..,"untrusted":false}`. There is no DELETE. The address must be https, on a host the plugin asks for, and its fixed start must be inside the pinned path. The host itself can never contain a placeholder.
+- **Placeholders** `{param}` (a tool argument; address and body only), `{setting.name}` and `{secret.name}` (values the person filled in; address, headers and body). A value put in the address is percent-encoded, so it cannot add a path part, a query or another host; an encoded slash, an encoded dot or `..` in the path is refused. The body is a JSON tree the app writes itself, so a quote in a value cannot break out of its string. An optional argument left out drops its field instead of sending it blank. Values are filled in one pass, so a value that looks like a placeholder stays literal.
+- **Settings** `settings[]` with `name`, `label`, `description`, `secret`, `required`, `maxLength`. They are filled in on the plugin's page and kept in encrypted storage (`lily_plugin_secrets`), never in the plugin's file. A saved secret is never shown again (a new value replaces it) and is never given to Lily. Uninstalling forgets them.
+- **Asking** every request is shown first with the method, the address, the headers and the body, and every `{secret.x}` shown as `[secret:x]`. Only a GET can be set to "don't ask again". Any other method asks every time: the switch is not offered, the registry refuses it, and a hand-edited file that sets it is ignored when the tool runs.
+- **Sending** headers `Host`, `Content-Length`, `Transfer-Encoding`, `Connection`, `Cookie` and similar are refused. The connection refuses a host that resolves to a private, local or link-local address, follows no redirect off the allowed host or path (a request that changes something follows none), reads at most 16 KB of the answer and times out (1 to 60 seconds).
+- **Answer** starts with `http <status>` (`error: http <status>` when not 2xx). Every secret the plugin holds is removed from the answer and from error messages, in plain and percent-encoded form (a secret under 4 characters is not scrubbed). `"untrusted": true` marks the answer as text written by other people, so Lily treats it as data.
+
+Limits: 10 settings, 10 headers, 100 body values, 4 levels of nesting.
+
+Known limit: the address is checked and the connection then resolves the name again, so a host that answers with a public address first and a private one next could slip past the private-address check. The person has allowed that host by name.
+
+Not verified: nothing here was compiled or run (no Android SDK or reachable Maven repository in my sandbox). Run `./gradlew testDebugUnitTest`; the tests are `HttpGuardTest`, `HttpManifestTest` and `HttpToolTest`.
+
 ## Not verified
 
 - **Nothing here was compiled or run.** There is no Gradle build in my sandbox: run `./gradlew testDebugUnitTest`.
@@ -88,4 +107,4 @@ The plugin runs commands as background commands (`bash -c`), which is what gives
 
 ## Tests
 
-`app/src/test/kotlin/ai/lily/app/plugins/`: the manifest parser (including the bundled Termux manifest and every rejection rule), the registry and stores (install, update rules, revoking, damaged and hand-edited files), and plugin tools against a fake bridge and fake gate (asking, denying, re-checking on every call, argument and placeholder rules, output, failures, registering).
+`app/src/test/kotlin/ai/lily/app/plugins/`: the manifest parser (including the bundled Termux manifest and every rejection rule), the registry and stores (install, update rules, revoking, damaged and hand-edited files), and plugin tools against a fake bridge and fake gate (asking, denying, re-checking on every call, argument and placeholder rules, output, failures, registering). The http capability has `HttpGuardTest` (host, path, address, header, redirect and private-address rules), `HttpManifestTest` (the http manifest rules) and `HttpToolTest` (asking, secrets hidden and scrubbed, encoding, JSON body, caps, registering).
