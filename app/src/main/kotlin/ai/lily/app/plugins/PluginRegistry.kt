@@ -21,6 +21,7 @@ sealed interface InstallResult {
  * - Only permissions the manifest asks for can be allowed.
  * - An update keeps an allowance only if the new manifest still asks for it, and never adds one.
  * - "Don't ask again" for a tool survives an update only if that tool is exactly the same and still allowed.
+ * - A tool that changes something (an http request other than GET) can never be set to "don't ask again".
  */
 class PluginRegistry(private val store: PluginStore) {
     fun list(): List<InstalledPlugin> = store.list()
@@ -56,7 +57,7 @@ class PluginRegistry(private val store: PluginStore) {
     fun revoke(id: String, permissionKey: String): Boolean = change(id) { p, s ->
         val stillAuto = s.autoApprove.filter { tool ->
             val spec = p.manifest.tools.firstOrNull { it.name == tool }
-            spec != null && Permission.ExternalApp(spec.action.packageName).key != permissionKey
+            spec != null && spec.action.permissionKey != permissionKey
         }.toSet()
         s.copy(granted = s.granted - permissionKey, autoApprove = stillAuto)
     }
@@ -67,7 +68,9 @@ class PluginRegistry(private val store: PluginStore) {
         when {
             spec == null -> null
             !on -> s.copy(autoApprove = s.autoApprove - toolName)
-            Permission.ExternalApp(spec.action.packageName).key !in s.granted -> null
+            // A tool that changes something somewhere else asks every time; the switch is never offered for it.
+            spec.action.alwaysAsks -> null
+            spec.action.permissionKey !in s.granted -> null
             else -> s.copy(autoApprove = s.autoApprove + toolName)
         }
     }
@@ -90,7 +93,7 @@ class PluginRegistry(private val store: PluginStore) {
         for (toolName in old.state.autoApprove) {
             val before = old.manifest.tools.firstOrNull { it.name == toolName }
             val after = manifest.tools.firstOrNull { it.name == toolName }
-            val stillAllowed = after != null && Permission.ExternalApp(after.action.packageName).key in granted
+            val stillAllowed = after != null && !after.action.alwaysAsks && after.action.permissionKey in granted
             if (before != null && after != null && before == after && stillAllowed) kept += toolName else cleared += toolName
         }
         return Carried(PluginState(old.state.enabled, granted, kept), dropped, cleared)
