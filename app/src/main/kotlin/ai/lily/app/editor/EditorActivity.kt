@@ -231,7 +231,8 @@ class EditorActivity : ComponentActivity() {
                             Section.Browse -> BrowseScreen(browser)
                             Section.Plugins -> PluginsScreen(plugins)
                             Section.Ai -> AiHost(ai, aiNav)
-                            Section.Settings -> SettingsScreen(this@EditorActivity, lifecycleScope, onSaved = { lily = null })
+                            // The AI section keeps its own copy of the settings, so it reads them again, or its next change would undo this save.
+                            Section.Settings -> SettingsScreen(this@EditorActivity, lifecycleScope, onSaved = { lily = null; ai.reload() })
                         }
                     }
 
