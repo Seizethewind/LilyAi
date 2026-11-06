@@ -28,6 +28,7 @@ import ai.lily.app.shell.TaskStore
 import ai.lily.app.ui.LilyTheme
 import ai.lily.app.workspace.AgentInstructions
 import ai.lily.app.workspace.WorkspaceLocation
+import ai.lily.app.workspace.WorkspaceMigration
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -77,6 +78,12 @@ class EditorActivity : ComponentActivity() {
     private lateinit var state: EditorState
     private var browse: BrowseState? = null
 
+    /**
+     * The folder this editor was opened on, which is where Lily's new files are made. It is picked once, when the screen is built,
+     * so Settings compares it with the folder the person chose to say whether that folder is really in use yet.
+     */
+    val workspaceRoot: File get() = state.root
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
@@ -85,6 +92,14 @@ class EditorActivity : ComponentActivity() {
         val drafts = DraftStore(File(remote?.dir ?: filesDir, "drafts"))
         val prefs = EditorPrefs(applicationContext, remote?.profile?.id.orEmpty())
         state = EditorState(root, drafts, prefs, fonts = ai.lily.app.lib.editor.FontStore(File(filesDir, "fonts")))
+
+        // The first time a chosen folder is used, what is in the private workspace is copied into it, in the background. Nothing is
+        // overwritten or removed, and the copy repeats at the next start until every file made it.
+        if (remote == null) {
+            lifecycleScope.launch {
+                withContext(Dispatchers.IO) { moveOldFiles(root) }?.let { state.message = it }
+            }
+        }
 
         // The phone's file picker, for adding a font file. Fonts have no single file type, so every file is offered and the app checks it.
         val fontPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
@@ -267,6 +282,22 @@ class EditorActivity : ComponentActivity() {
     }
 
     /**
+     * Copies what is in the private workspace into [root], the first time that folder is used. Nothing is overwritten or removed. The
+     * mark that it was done is kept per destination and only set when every file made it, so a failed copy tries again at the next
+     * start. Returns what to tell the person, or null when there was nothing to say.
+     */
+    private fun moveOldFiles(root: File): String? {
+        val privateRoot = File(filesDir, "workspace")
+        if (WorkspaceMigration.sameFolder(privateRoot, root)) return null
+        val prefs = getSharedPreferences("storage", MODE_PRIVATE)
+        val key = MOVED + root.absolutePath
+        if (prefs.getBoolean(key, false)) return null
+        val result = WorkspaceMigration.copyMissing(privateRoot, root)
+        if (result.failed == 0) prefs.edit().putBoolean(key, true).apply()
+        return WorkspaceMigration.note(result, root)
+    }
+
+    /**
      * Palette entries from plugins that are on. Running one sends its text, with the selection, file and language filled in, to Lily.
      * The reply and any proposed edits come back the usual way, for the person to read and accept.
      */
@@ -324,5 +355,6 @@ class EditorActivity : ComponentActivity() {
 
     private companion object {
         const val TERMUX_RUN_COMMAND = "com.termux.permission.RUN_COMMAND"
+        const val MOVED = "workspaceMoved:"
     }
 }

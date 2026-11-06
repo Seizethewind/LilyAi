@@ -10,7 +10,8 @@ data class SetupResult(val root: File, val project: File, val created: List<Stri
  * `<parent>/lilyai/<project>/README.md` and `<parent>/lilyai/<project>/AGENT.md`.
  *
  * Nothing that already exists is touched. A file that is there is reported in [SetupResult.kept] and left as it is, so running the
- * setup again, or on a folder the person already filled, never loses their words.
+ * setup again, or on a folder the person already filled, never loses their words. Every file written is read back, so a write that
+ * Android blocked is reported instead of passing silently.
  */
 object WorkspaceSetup {
     const val ROOT_NAME = "lilyai"
@@ -22,12 +23,25 @@ object WorkspaceSetup {
         return cleaned.ifEmpty { DEFAULT_PROJECT }
     }
 
-    /** Throws IllegalStateException when a folder cannot be made (for example, no file access yet). */
+    /**
+     * The folder to put `lilyai` in, from what the person typed: spaces and a trailing slash are dropped, and a path that already
+     * ends in `lilyai` means the folder above it, so the result is never `lilyai/lilyai`.
+     */
+    fun baseFolder(raw: String): File {
+        val folder = File(raw.trim().trimEnd('/'))
+        val parent = folder.parentFile
+        return if (folder.name.equals(ROOT_NAME, ignoreCase = true) && parent != null) parent else folder
+    }
+
+    /** Throws IllegalStateException with a plain message when a folder or file cannot be made (for example, no file access yet). */
     fun create(parent: File, project: String): SetupResult {
         val root = File(parent, ROOT_NAME)
         val name = projectName(project)
         val dir = File(root, name)
         check(dir.isDirectory || dir.mkdirs()) { "Could not create ${dir.path}" }
+        // canWrite() can say yes while Android still blocks the write, so try a real one before writing anything.
+        val probe = runCatching { File.createTempFile(".lily-", ".tmp", dir).also { it.delete() } }
+        check(probe.isSuccess) { "Android does not let this app write in ${dir.path}" }
 
         val created = mutableListOf<String>()
         val kept = mutableListOf<String>()
@@ -39,6 +53,7 @@ object WorkspaceSetup {
                 kept += rel
             } else {
                 file.writeText(text)
+                check(file.isFile && file.length() > 0) { "$rel was written but is not there afterwards" }
                 created += rel
             }
         }
