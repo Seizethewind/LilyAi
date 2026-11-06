@@ -1,0 +1,81 @@
+{
+  "schema": 1,
+  "id": "lily.discord",
+  "name": "Discord",
+  "version": "1.0.0",
+  "description": "Read channels and messages of a Discord server and post messages, as your own bot. It can never delete, kick, ban or change roles.",
+  "author": "Lily",
+  "icon": "D",
+  "accent": "#5865F2",
+  "permissions": ["http:discord.com/api/v10/"],
+  "settings": [
+    {
+      "name": "token",
+      "label": "Bot token",
+      "description": "The token of your own Discord bot (developer portal, Bot page). What it can see and post is decided by the bot's role in the server.",
+      "secret": true,
+      "required": true,
+      "maxLength": 200
+    }
+  ],
+  "tools": [
+    {
+      "name": "discord_list_channels",
+      "description": "List the channels of a server (names and ids) that the bot is in.",
+      "params": [
+        {"name": "guild_id", "description": "The server id (a long number).", "required": true, "maxLength": 20}
+      ],
+      "action": {
+        "kind": "http",
+        "method": "GET",
+        "url": "https://discord.com/api/v10/guilds/{guild_id}/channels",
+        "headers": {
+          "Authorization": "Bot {secret.token}",
+          "User-Agent": "DiscordBot (https://github.com/Seizethewind/LilyAi, 1.0.0)"
+        },
+        "timeoutMs": 20000,
+        "untrusted": true
+      }
+    },
+    {
+      "name": "discord_read_messages",
+      "description": "Read the newest 10 messages of a channel. Needs the Message Content intent turned on for the bot.",
+      "params": [
+        {"name": "channel_id", "description": "The channel id (a long number).", "required": true, "maxLength": 20}
+      ],
+      "action": {
+        "kind": "http",
+        "method": "GET",
+        "url": "https://discord.com/api/v10/channels/{channel_id}/messages?limit=10",
+        "headers": {
+          "Authorization": "Bot {secret.token}",
+          "User-Agent": "DiscordBot (https://github.com/Seizethewind/LilyAi, 1.0.0)"
+        },
+        "timeoutMs": 20000,
+        "untrusted": true
+      }
+    },
+    {
+      "name": "discord_send_message",
+      "description": "Post a message in a channel as the bot. Asks you every time. It cannot ping @everyone, @here or roles.",
+      "params": [
+        {"name": "channel_id", "description": "The channel id (a long number).", "required": true, "maxLength": 20},
+        {"name": "content", "description": "The message text, 2000 characters at most.", "required": true, "maxLength": 2000}
+      ],
+      "action": {
+        "kind": "http",
+        "method": "POST",
+        "url": "https://discord.com/api/v10/channels/{channel_id}/messages",
+        "headers": {
+          "Authorization": "Bot {secret.token}",
+          "User-Agent": "DiscordBot (https://github.com/Seizethewind/LilyAi, 1.0.0)"
+        },
+        "body": {
+          "content": "{content}",
+          "allowed_mentions": {"parse": []}
+        },
+        "timeoutMs": 30000
+      }
+    }
+  ]
+}
