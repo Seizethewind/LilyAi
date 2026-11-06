@@ -67,7 +67,8 @@ import kotlinx.coroutines.launch
 
 /**
  * The Plugins section. Installed shows what the person has; All adds what ships in the app and what the catalog offers, so a
- * removed plugin can be put back. A card installs or uninstalls in one tap; tapping the card opens its page.
+ * removed plugin can be put back. A card installs or uninstalls in one tap; tapping the card opens its page. A plugin that is
+ * on and names one of the app's screens also has an Open button, which shows that screen in place of the list.
  */
 @Composable
 fun PluginsScreen(services: PluginServices, modifier: Modifier = Modifier) {
@@ -82,6 +83,7 @@ fun PluginsScreen(services: PluginServices, modifier: Modifier = Modifier) {
     var tab by remember { mutableIntStateOf(0) }
     var query by remember { mutableStateOf("") }
     var openId by remember { mutableStateOf<String?>(null) }
+    var screen by remember { mutableStateOf<String?>(null) }
     var adding by remember { mutableStateOf(false) }
     var installing by remember { mutableStateOf<String?>(null) }
     var removing by remember { mutableStateOf<Listing?>(null) }
@@ -107,6 +109,7 @@ fun PluginsScreen(services: PluginServices, modifier: Modifier = Modifier) {
 
     val all = remember(installed, bundled, catalog) { mergeListings(installed, bundled, catalog) }
     val open = openId?.let { id -> all.firstOrNull { it.id == id } }
+    val shownScreen = screen
 
     fun install(l: Listing) {
         if (installing != null) return
@@ -128,7 +131,9 @@ fun PluginsScreen(services: PluginServices, modifier: Modifier = Modifier) {
         note?.let { message ->
             Banner(message, Tone.Petal, Modifier.padding(horizontal = 20.dp, vertical = 8.dp), actionLabel = "Dismiss", onAction = { note = null })
         }
-        if (open != null) {
+        if (shownScreen != null) {
+            PluginScreenHost(shownScreen, onBack = { screen = null }, modifier = Modifier.weight(1f))
+        } else if (open != null) {
             PluginDetail(
                 listing = open,
                 plugin = installed.firstOrNull { it.manifest.id == open.id },
@@ -137,6 +142,7 @@ fun PluginsScreen(services: PluginServices, modifier: Modifier = Modifier) {
                 onBack = { openId = null },
                 onInstall = { install(open) },
                 onUninstall = { removing = open },
+                onOpenScreen = { screen = it },
                 modifier = Modifier.weight(1f),
             )
         } else {
@@ -209,6 +215,7 @@ fun PluginsScreen(services: PluginServices, modifier: Modifier = Modifier) {
                         onToggle = { on -> services.setEnabled(l.id, on) },
                         onInstall = { install(l) },
                         onUninstall = { removing = l },
+                        onOpenScreen = { screen = it },
                     )
                 }
                 item { Spacer(Modifier.height(24.dp)) }
@@ -238,8 +245,12 @@ fun PluginsScreen(services: PluginServices, modifier: Modifier = Modifier) {
     }
 }
 
-/** "v1.0.0 \u00B7 Someone", leaving out what the plugin does not say. */
-private fun byline(l: Listing): String = listOf("v${l.version}", l.author).filter { it.length > 1 }.joinToString(" \u00B7 ")
+/** The screen a plugin's Open button shows: only when the plugin is installed, turned on, and names one. */
+private fun screenToOpen(plugin: InstalledPlugin?): String? =
+    plugin?.takeIf { it.state.enabled }?.manifest?.screen?.takeIf { it.isNotEmpty() }
+
+/** "v1.0.0 · Someone", leaving out what the plugin does not say. */
+private fun byline(l: Listing): String = listOf("v${l.version}", l.author).filter { it.length > 1 }.joinToString(" · ")
 
 /** The plugin's icon, or its first letter, on a tile in its accent colour (the app's petal colour when it has none). */
 @Composable
@@ -260,9 +271,11 @@ private fun PluginCard(
     onToggle: (Boolean) -> Unit,
     onInstall: () -> Unit,
     onUninstall: () -> Unit,
+    onOpenScreen: (String) -> Unit,
 ) {
     val c = LilyUi.colors
     val shape = RoundedCornerShape(24.dp)
+    val screen = screenToOpen(plugin)
     Column(
         Modifier
             .fillMaxWidth()
@@ -286,6 +299,7 @@ private fun PluginCard(
         if (listing.description.isNotEmpty()) {
             Text(listing.description, style = MaterialTheme.typography.bodyMedium, color = c.textDim, maxLines = 3, overflow = TextOverflow.Ellipsis)
         }
+        if (screen != null) LilyButton("Open", { onOpenScreen(screen) }, Modifier.fillMaxWidth())
         if (listing.installed) {
             LilyButton("Uninstall", onUninstall, Modifier.fillMaxWidth(), kind = ButtonKind.Quiet)
         } else {
@@ -304,10 +318,12 @@ private fun PluginDetail(
     onBack: () -> Unit,
     onInstall: () -> Unit,
     onUninstall: () -> Unit,
+    onOpenScreen: (String) -> Unit,
     modifier: Modifier = Modifier,
 ) {
     BackHandler(onBack = onBack)
     val c = LilyUi.colors
+    val screen = screenToOpen(plugin)
     Column(
         modifier.fillMaxWidth().verticalScroll(rememberScrollState()).padding(horizontal = 20.dp, vertical = 12.dp),
         verticalArrangement = Arrangement.spacedBy(16.dp),
@@ -325,6 +341,7 @@ private fun PluginDetail(
             Text(listing.description, style = MaterialTheme.typography.bodyLarge, color = MaterialTheme.colorScheme.onBackground)
         }
         if (plugin != null) {
+            if (screen != null) LilyButton("Open", { onOpenScreen(screen) }, Modifier.fillMaxWidth())
             PluginDetailBody(plugin, services)
             LilyButton("Uninstall", onUninstall, Modifier.fillMaxWidth(), kind = ButtonKind.Danger)
         } else {
