@@ -1,0 +1,115 @@
+{
+  "schema": 1,
+  "id": "lily.github",
+  "name": "GitHub",
+  "version": "1.0.0",
+  "description": "Pull requests on GitHub: list, read, see check results and open a new one. It cannot merge, close or delete anything.",
+  "author": "Lily",
+  "icon": "G",
+  "accent": "#24292F",
+  "permissions": ["http:api.github.com"],
+  "settings": [
+    {
+      "name": "token",
+      "label": "GitHub token",
+      "description": "A fine-grained token limited to the repositories you choose, with Pull requests (read and write) and Checks (read).",
+      "secret": true,
+      "required": true,
+      "maxLength": 300
+    }
+  ],
+  "tools": [
+    {
+      "name": "gh_list_prs",
+      "description": "List the newest open pull requests of a repository (5 at most).",
+      "params": [
+        {"name": "owner", "description": "Account or organisation that owns the repository.", "required": true, "maxLength": 39},
+        {"name": "repo", "description": "Repository name.", "required": true, "maxLength": 100}
+      ],
+      "action": {
+        "kind": "http",
+        "method": "GET",
+        "url": "https://api.github.com/repos/{owner}/{repo}/pulls?state=open&per_page=5",
+        "headers": {
+          "Accept": "application/vnd.github+json",
+          "Authorization": "Bearer {secret.token}",
+          "X-GitHub-Api-Version": "2022-11-28"
+        },
+        "timeoutMs": 20000,
+        "untrusted": true
+      }
+    },
+    {
+      "name": "gh_get_pr",
+      "description": "Read one pull request: title, description, branches, state and the head commit sha.",
+      "params": [
+        {"name": "owner", "description": "Account or organisation that owns the repository.", "required": true, "maxLength": 39},
+        {"name": "repo", "description": "Repository name.", "required": true, "maxLength": 100},
+        {"name": "number", "description": "The pull request number.", "required": true, "maxLength": 10}
+      ],
+      "action": {
+        "kind": "http",
+        "method": "GET",
+        "url": "https://api.github.com/repos/{owner}/{repo}/pulls/{number}",
+        "headers": {
+          "Accept": "application/vnd.github+json",
+          "Authorization": "Bearer {secret.token}",
+          "X-GitHub-Api-Version": "2022-11-28"
+        },
+        "timeoutMs": 20000,
+        "untrusted": true
+      }
+    },
+    {
+      "name": "gh_pr_checks",
+      "description": "Check results (passed, failed, running) for a commit. Use the head commit sha from gh_get_pr.",
+      "params": [
+        {"name": "owner", "description": "Account or organisation that owns the repository.", "required": true, "maxLength": 39},
+        {"name": "repo", "description": "Repository name.", "required": true, "maxLength": 100},
+        {"name": "sha", "description": "Full commit sha (40 hex characters), not a branch name.", "required": true, "maxLength": 40}
+      ],
+      "action": {
+        "kind": "http",
+        "method": "GET",
+        "url": "https://api.github.com/repos/{owner}/{repo}/commits/{sha}/check-runs?per_page=30",
+        "headers": {
+          "Accept": "application/vnd.github+json",
+          "Authorization": "Bearer {secret.token}",
+          "X-GitHub-Api-Version": "2022-11-28"
+        },
+        "timeoutMs": 20000,
+        "untrusted": true
+      }
+    },
+    {
+      "name": "gh_create_pr",
+      "description": "Open a pull request from a branch that is already pushed. Asks you every time.",
+      "params": [
+        {"name": "owner", "description": "Account or organisation that owns the repository.", "required": true, "maxLength": 39},
+        {"name": "repo", "description": "Repository name.", "required": true, "maxLength": 100},
+        {"name": "title", "description": "Pull request title.", "required": true, "maxLength": 256},
+        {"name": "head", "description": "Branch with the changes (owner:branch from a fork).", "required": true, "maxLength": 200},
+        {"name": "base", "description": "Branch to merge into, usually main.", "required": true, "maxLength": 200},
+        {"name": "body", "description": "Pull request description.", "required": false, "maxLength": 4000}
+      ],
+      "action": {
+        "kind": "http",
+        "method": "POST",
+        "url": "https://api.github.com/repos/{owner}/{repo}/pulls",
+        "headers": {
+          "Accept": "application/vnd.github+json",
+          "Authorization": "Bearer {secret.token}",
+          "X-GitHub-Api-Version": "2022-11-28"
+        },
+        "body": {
+          "title": "{title}",
+          "head": "{head}",
+          "base": "{base}",
+          "body": "{body}"
+        },
+        "timeoutMs": 30000,
+        "untrusted": true
+      }
+    }
+  ]
+}
