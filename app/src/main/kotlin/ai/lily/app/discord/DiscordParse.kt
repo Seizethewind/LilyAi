@@ -18,8 +18,8 @@ internal object DiscordParse {
         val out = ArrayList<DiscordGuild>()
         for (i in 0 until array.length()) {
             val o = array.optJSONObject(i) ?: continue
-            val id = id(o, "id") ?: continue
-            out += DiscordGuild(id, label(text(o, "name"), "server $id"))
+            val guildId = snowflake(o, "id") ?: continue
+            out += DiscordGuild(guildId, label(text(o, "name"), "server $guildId"))
         }
         return out.sortedBy { it.name.lowercase() }
     }
@@ -29,8 +29,14 @@ internal object DiscordParse {
         val out = ArrayList<DiscordChannel>()
         for (i in 0 until array.length()) {
             val o = array.optJSONObject(i) ?: continue
-            val id = id(o, "id") ?: continue
-            out += DiscordChannel(id, label(text(o, "name"), "channel-$id"), o.optInt("type", 0), id(o, "parent_id"), o.optInt("position", 0))
+            val channelId = snowflake(o, "id") ?: continue
+            out += DiscordChannel(
+                id = channelId,
+                name = label(text(o, "name"), "channel-$channelId"),
+                type = o.optInt("type", 0),
+                parentId = snowflake(o, "parent_id"),
+                position = o.optInt("position", 0),
+            )
         }
         return out
     }
@@ -47,7 +53,7 @@ internal object DiscordParse {
     }
 
     fun message(o: JSONObject): DiscordMessage? {
-        val id = id(o, "id") ?: return null
+        val messageId = snowflake(o, "id") ?: return null
         val author = o.optJSONObject("author")
         val shownName = author?.let { text(it, "global_name")?.takeIf { name -> name.isNotBlank() } ?: text(it, "username") }
         val files = ArrayList<String>()
@@ -59,8 +65,8 @@ internal object DiscordParse {
             }
         }
         return DiscordMessage(
-            id = id,
-            authorId = author?.let { id(it, "id") }.orEmpty(),
+            id = messageId,
+            authorId = author?.let { snowflake(it, "id") }.orEmpty(),
             authorName = label(shownName, "unknown"),
             authorIsBot = author?.optBoolean("bot", false) ?: false,
             content = clean(text(o, "content").orEmpty(), MAX_CONTENT),
@@ -92,7 +98,7 @@ internal object DiscordParse {
         return if (v == null || v === JSONObject.NULL) null else (v as? String) ?: v.toString()
     }
 
-    private fun id(o: JSONObject, key: String): String? = text(o, key)?.takeIf { Snowflake.isValid(it) }
+    private fun snowflake(o: JSONObject, key: String): String? = text(o, key)?.takeIf { Snowflake.isValid(it) }
 
     /** One short line for a name. */
     private fun label(raw: String?, fallback: String): String {
