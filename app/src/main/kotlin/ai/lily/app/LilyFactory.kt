@@ -33,6 +33,7 @@ import ai.lily.app.workers.ProfileGateway
 import ai.lily.app.workers.ResearchWorker
 import ai.lily.app.workers.Worker
 import ai.lily.app.workers.WorkerRoster
+import ai.lily.app.workspace.AgentInstructions
 import java.io.File
 
 /** Wires everything together from the user's settings. */
@@ -46,6 +47,8 @@ object LilyFactory {
      * and the planner is not told about one.
      * [teamGate] asks the person to approve the TEAM worker's changes before they are made; without one they are made at once.
      * [gitRepo] is the repo folder in Termux that the git worker uses when a task names none (the one set in the Git dialog).
+     * [agentInstructions] reads the workspace's AGENT.md files. What they say for a role is added to that worker's calls, and what
+     * they say for Lily to the planner's, after Lily's own rules. Without it nothing is added.
      * Workers the person created (settings.workers) take over their role from the built-in worker, each with its own router,
      * model and instructions. A role with no created workers keeps the built-in one.
      * Lily's own rules (settings.lily) are added to every worker's calls and to the planner's, after the caller's own system text.
@@ -59,11 +62,18 @@ object LilyFactory {
         roster: WorkerRoster? = null,
         teamGate: ConfirmationGate? = null,
         gitRepo: () -> String = { "" },
+        agentInstructions: AgentInstructions? = null,
     ): Lily {
         val gateway = RouterModelGateway(settings.router)
         val second: ModelGateway? = settings.router2?.let { RouterModelGateway(it) }
         val lily = settings.lily
-        fun withLilysRules(g: ModelGateway): ModelGateway = LilyGateway(g, lily.instructions)
+
+        // Lily's own rules first, then what AGENT.md says. The files are read at each call, so an edit applies to the next answer.
+        fun rules(fromAgentMd: () -> String): () -> String = {
+            listOf(lily.instructions.trim(), fromAgentMd().trim()).filter { it.isNotEmpty() }.joinToString("\n\n")
+        }
+        fun withLilysRules(g: ModelGateway, type: WorkerType): ModelGateway =
+            LilyGateway(g, rules { agentInstructions?.forWorker(type).orEmpty() })
 
         val tools = ToolSystem().apply {
             register(WebSearchTool(gateway, settings.router.webSearchModel))
@@ -92,12 +102,12 @@ object LilyFactory {
                 val profiles = created[type].orEmpty()
                 if (profiles.isEmpty()) {
                     // Testers exist only when the person makes them; every other role always has a built-in worker.
-                    if (type != WorkerType.TEST) register(worker(type, withLilysRules(gateway)))
+                    if (type != WorkerType.TEST) register(worker(type, withLilysRules(gateway, type)))
                 } else {
                     for (p in profiles) {
                         val router = if (p.router == 1 && second != null) second else gateway
                         // ProfileGateway puts the worker's instructions first, then the call's own text; Lily's rules are added last.
-                        register(worker(type, ProfileGateway(withLilysRules(router), p.model, p.instructions)))
+                        register(worker(type, ProfileGateway(withLilysRules(router, type), p.model, p.instructions)))
                     }
                 }
             }
@@ -110,7 +120,10 @@ object LilyFactory {
         } else null
 
         val plannerRouter = if (lily.router == 1 && second != null) second else gateway
-        val planner = LlmPlanner(LilyGateway(plannerRouter, lily.instructions, lily.model), teamRole = roster != null)
+        val planner = LlmPlanner(
+            LilyGateway(plannerRouter, rules { agentInstructions?.forLily().orEmpty() }, lily.model),
+            teamRole = roster != null,
+        )
         return Lily(planner, manager, Context(), memory)
     }
 }

@@ -26,6 +26,8 @@ import ai.lily.app.shell.TaskQueue
 import ai.lily.app.shell.TaskService
 import ai.lily.app.shell.TaskStore
 import ai.lily.app.ui.LilyTheme
+import ai.lily.app.workspace.AgentInstructions
+import ai.lily.app.workspace.WorkspaceLocation
 import android.Manifest
 import android.content.pm.PackageManager
 import android.net.Uri
@@ -66,8 +68,10 @@ import java.io.File
 /**
  * The app. Six sections: Work (the Acode style code editor with Lily's coding and file workers), Chat (free talk with Lily, and the
  * queue of background tasks), Browse, Plugins, AI (Lily, workers, routers and models, behind a drawer) and Settings. On a phone they sit in a bar along the
- * bottom, within thumb's reach; on a wide screen they run down the left edge. Files live in the app's own `workspace` folder, or,
- * while a remote connection is open, in the local copy of that server folder.
+ * bottom, within thumb's reach; on a wide screen they run down the left edge. Files live in the folder the person chose in Settings
+ * (`<folder>/lilyai`, shared with Termux), or, when none is chosen or it cannot be used, in the app's own `workspace` folder, or,
+ * while a remote connection is open, in the local copy of that server folder. The AGENT.md files in that folder tell Lily and her
+ * workers how to work there.
  */
 class EditorActivity : ComponentActivity() {
     private lateinit var state: EditorState
@@ -77,7 +81,7 @@ class EditorActivity : ComponentActivity() {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val remote = RemoteHub.active
-        val root = remote?.localRoot ?: File(filesDir, "workspace").apply { mkdirs() }
+        val root = remote?.localRoot ?: WorkspaceLocation(applicationContext).root(filesDir)
         val drafts = DraftStore(File(remote?.dir ?: filesDir, "drafts"))
         val prefs = EditorPrefs(applicationContext, remote?.profile?.id.orEmpty())
         state = EditorState(root, drafts, prefs, fonts = ai.lily.app.lib.editor.FontStore(File(filesDir, "fonts")))
@@ -121,6 +125,10 @@ class EditorActivity : ComponentActivity() {
             }
         }
 
+        // The AGENT.md files of this workspace: the one in the root, and the one in the project the open file belongs to. Read at each
+        // call, so an edit applies to Lily's next answer without rebuilding her.
+        val agentMd = AgentInstructions(root) { state.current?.path?.takeIf { '/' in it }?.substringBefore('/') }
+
         // Lily is built the first time she is asked, and again when the person changes a plugin, a worker or the settings, so a
         // plugin turned on a moment ago gives her its tools. The project folder lets her coding worker find relevant files beyond the open tabs.
         var lily: Lily? = null
@@ -134,6 +142,7 @@ class EditorActivity : ComponentActivity() {
             return lily.takeIf { builtFor == wanted } ?: LilyFactory.create(
                 settingsStore.load(), session.bridge, root, plugins.host,
                 roster = roster, teamGate = plugins.gate, gitRepo = { git.repo.trim() },
+                agentInstructions = agentMd,
             ).also {
                 lily = it
                 builtFor = wanted

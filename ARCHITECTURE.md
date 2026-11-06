@@ -44,6 +44,12 @@ See `docs/memory.md`.
 
 Extensions are a JSON manifest only; the app never runs plugin code. A plugin is off and has nothing allowed until the person turns it on and allows each permission, and every tool call is re-checked and shown to the person first. Plugin tools join the Tool System after the app's own tools and can never replace one. See `docs/plugins.md`.
 
+## Workspace folder and AGENT.md
+
+The person can choose, in Settings, a folder for their project files. The app makes `<folder>/lilyai/` with an `AGENT.md` for all projects and, per project, a `README.md` and an `AGENT.md`, and the editor opens `<folder>/lilyai`, which Termux can also see. Without a usable folder the private workspace is used. Secrets, settings, plugins and drafts always stay private.
+
+Lily and her workers read the AGENT.md files at each call (`workspace/AgentInstructions`) and get them through the Model Gateway, after Lily's own rules: sections named for a role go only to that role, the rest to everyone, the project's file wins over the root's. They are advice only: they cannot grant permissions, switch off approvals or change which tools run. See `docs/workspace.md`.
+
 ## External services
 
 - **Router (FreeLLMAPI)** — models and web search, via the Model Gateway. See `docs/router.md`.

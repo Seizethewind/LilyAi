@@ -102,8 +102,9 @@ private fun Group(title: String, hint: String, content: @Composable () -> Unit) 
 }
 
 /**
- * The Settings section: where Lily's memory, search and sandbox are connected. Keys and tokens are saved only in encrypted
- * app storage. Save sits in a bar at the foot, so it is reachable from any field, and what happened shows right above it.
+ * The Settings section: where Lily's memory, search and sandbox are connected, and the folder the project files live in. Keys and
+ * tokens are saved only in encrypted app storage. Save sits in a bar at the foot, so it is reachable from any field, and what
+ * happened shows right above it. The workspace folder has its own buttons and is not part of Save.
  */
 @Composable
 fun SettingsScreen(activity: Activity, scope: CoroutineScope, onSaved: () -> Unit, modifier: Modifier = Modifier) {
@@ -167,6 +168,7 @@ fun SettingsScreen(activity: Activity, scope: CoroutineScope, onSaved: () -> Uni
                 "Settings",
                 subtitle = "Keys and tokens stay encrypted on this phone. Routers, models and workers are in the AI section.",
             )
+            WorkspaceFolderGroup(activity)
             Group("Journal", "The raw log of requests, decisions and results.") {
                 LilyTextField(form.journalUrl, { form.journalUrl = it }, "Database address", placeholder = "libsql://…", mono = true, keyboardType = KeyboardType.Uri)
                 LilyTextField(form.journalToken, { form.journalToken = it }, "Token", secret = true, mono = true)
