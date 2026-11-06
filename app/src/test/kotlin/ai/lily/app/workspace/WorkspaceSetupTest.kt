@@ -20,6 +20,15 @@ class WorkspaceSetupTest {
     }
 
     @Test
+    fun baseFolderNeverDoublesLilyai() {
+        assertEquals(File("/sdcard/Documents"), WorkspaceSetup.baseFolder("/sdcard/Documents/lilyai"))
+        assertEquals(File("/sdcard/Documents"), WorkspaceSetup.baseFolder("  /sdcard/Documents/lilyai/ "))
+        assertEquals(File("/sdcard/Documents"), WorkspaceSetup.baseFolder("/sdcard/Documents/"))
+        assertEquals(File("/sdcard/Documents"), WorkspaceSetup.baseFolder("/sdcard/Documents/LilyAI"))
+        assertEquals(File("/sdcard/Documents/lilyai-notes"), WorkspaceSetup.baseFolder("/sdcard/Documents/lilyai-notes"))
+    }
+
+    @Test
     fun createsRootAgentAndProjectFiles() {
         val result = WorkspaceSetup.create(tmp.root, "Calculator")
         val root = File(tmp.root, "lilyai")
@@ -30,6 +39,14 @@ class WorkspaceSetupTest {
         assertTrue(File(root, "calculator/README.md").readText().startsWith("# calculator"))
         assertEquals(3, result.created.size)
         assertTrue(result.kept.isEmpty())
+    }
+
+    @Test
+    fun typingTheLilyaiFolderItselfStillGivesOneLilyaiFolder() {
+        val typed = File(tmp.root, "lilyai").path
+        WorkspaceSetup.create(WorkspaceSetup.baseFolder(typed), "app")
+        assertTrue(File(tmp.root, "lilyai/AGENT.md").isFile)
+        assertTrue(!File(tmp.root, "lilyai/lilyai").exists())
     }
 
     @Test
@@ -56,5 +73,12 @@ class WorkspaceSetupTest {
         val again = WorkspaceSetup.create(tmp.root, "app")
         assertTrue(again.created.isEmpty())
         assertEquals(3, again.kept.size)
+    }
+
+    @Test(expected = IllegalStateException::class)
+    fun aFolderThatCannotBeMadeIsAnErrorNotASilentSkip() {
+        // A plain file where the parent folder should be: nothing can be made inside it.
+        val blocker = tmp.newFile("blocker")
+        WorkspaceSetup.create(blocker, "app")
     }
 }

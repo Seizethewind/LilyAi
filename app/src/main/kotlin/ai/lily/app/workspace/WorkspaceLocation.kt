@@ -30,15 +30,18 @@ class WorkspaceLocation(context: Context) {
             sp.edit().putString("folder", value.trim()).apply()
         }
 
-    /** `<folder>/lilyai` when a folder is chosen and can be written to, otherwise null. */
+    /** `<folder>/lilyai` when a folder is chosen and a file can really be written in it, otherwise null. */
     fun sharedRoot(): File? {
-        val base = folder.takeIf { it.isNotBlank() } ?: return null
-        val dir = File(base, WorkspaceSetup.ROOT_NAME)
-        return dir.takeIf { (it.isDirectory || it.mkdirs()) && it.canWrite() }
+        val raw = folder.takeIf { it.isNotBlank() } ?: return null
+        val dir = File(WorkspaceSetup.baseFolder(raw), WorkspaceSetup.ROOT_NAME)
+        return dir.takeIf { (it.isDirectory || it.mkdirs()) && canWriteIn(it) }
     }
 
     /** The workspace root to open: the shared one if usable, else the private one. */
     fun root(filesDir: File): File = sharedRoot() ?: File(filesDir, "workspace").apply { mkdirs() }
+
+    /** File.canWrite() can say yes while Android blocks the write, so a real, throwaway file is written. */
+    private fun canWriteIn(dir: File): Boolean = runCatching { File.createTempFile(".lily-", ".tmp", dir).delete() }.getOrDefault(false)
 
     companion object {
         private const val STORAGE_REQUEST = 7

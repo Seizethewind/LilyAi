@@ -1,5 +1,7 @@
 package ai.lily.app
 
+import ai.lily.app.editor.EditorActivity
+import ai.lily.app.remote.RemoteHub
 import ai.lily.app.ui.Banner
 import ai.lily.app.ui.ButtonKind
 import ai.lily.app.ui.Hairline
@@ -25,12 +27,14 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
-import java.io.File
 
 /**
  * The Settings group where the person chooses the folder the project files live in, by hand. Tapping Create makes
  * `<folder>/lilyai/AGENT.md` and `<folder>/lilyai/<project>/README.md` and `AGENT.md` (nothing that exists is overwritten),
  * remembers the folder, and offers to open the editor on it. Only the folder's path is kept, in the app's private preferences.
+ *
+ * The editor picks its folder when it opens, so a folder saved here is not the one Lily's files go to until the editor is opened on
+ * it again. The status line says which folder the editor is really on, and the Open button shows whenever the two differ.
  */
 @Composable
 fun WorkspaceFolderGroup(activity: Activity) {
@@ -38,14 +42,20 @@ fun WorkspaceFolderGroup(activity: Activity) {
     var folder by remember { mutableStateOf(location.folder.ifBlank { WorkspaceLocation.defaultFolder() }) }
     var project by remember { mutableStateOf(WorkspaceSetup.DEFAULT_PROJECT) }
     var message by remember { mutableStateOf<Pair<String, Tone>?>(null) }
-    var ready by remember { mutableStateOf(false) }
     val granted = WorkspaceLocation.accessGranted(activity)
-    val inUse = remember(message, granted) { location.sharedRoot() }
+    val chosen = remember(message, granted) { location.sharedRoot()?.let { runCatching { it.canonicalFile }.getOrNull() } }
+    val editorRoot = (activity as? EditorActivity)?.workspaceRoot?.let { runCatching { it.canonicalFile }.getOrNull() }
+    val remoteOpen = RemoteHub.active != null
+    val pending = chosen != null && chosen != editorRoot && !remoteOpen
 
     val status = when {
-        inUse != null -> "In use now: ${inUse.path}"
+        remoteOpen -> "A remote workspace is open, so the editor stays on its files. Disconnect it to use this folder."
+        chosen != null && !pending -> "In use now: ${chosen.path}"
+        chosen != null ->
+            "Saved: ${chosen.path}. The editor is still on ${editorRoot?.path ?: "another folder"}, so Lily's new files go there " +
+                "until you open the editor on the saved folder."
         location.folder.isBlank() -> "In use now: the app's private workspace. No other app can see it."
-        else -> "The chosen folder cannot be used yet, so the private workspace is in use. Allow file access, then tap Create."
+        else -> "The chosen folder cannot be written to, so the private workspace is in use. Allow file access, then tap Create."
     }
 
     SectionTitle(
@@ -81,23 +91,25 @@ fun WorkspaceFolderGroup(activity: Activity) {
         LilyButton(
             "Create lilyai folder",
             onClick = {
-                val path = folder.trim()
-                if (path.isEmpty()) {
-                    message = "Type a folder first." to Tone.Stamen
-                } else {
-                    try {
-                        val result = WorkspaceSetup.create(File(path), project)
-                        location.folder = path
-                        ready = true
-                        message = "Ready at ${result.root.path}. Made ${result.created.size} file(s); kept ${result.kept.size} that were already there." to Tone.Pad
+                // Typing .../lilyai is the same as typing the folder above it, so the files never end up in lilyai/lilyai.
+                val base = WorkspaceSetup.baseFolder(folder)
+                when {
+                    base.path.isEmpty() -> message = "Type a folder first." to Tone.Stamen
+                    !base.isAbsolute -> message = "Type the full path, starting with /." to Tone.Stamen
+                    else -> try {
+                        val result = WorkspaceSetup.create(base, project)
+                        location.folder = base.path
+                        folder = base.path
+                        val made = if (result.created.isEmpty()) "nothing new" else result.created.joinToString(", ")
+                        val kept = if (result.kept.isEmpty()) "" else " Kept as they were: ${result.kept.joinToString(", ")}."
+                        message = "Made in ${result.root.path}: $made.$kept" to Tone.Pad
                     } catch (e: Exception) {
-                        ready = false
                         message = "Could not create it: ${e.message}. Allow file access and try again." to Tone.Coral
                     }
                 }
             },
         )
-        if (ready) {
+        if (pending) {
             LilyButton("Open the editor on it now", onClick = { activity.recreate() }, kind = ButtonKind.Tonal)
         }
         if (location.folder.isNotBlank()) {
