@@ -39,7 +39,10 @@ class StoreRoster(private val store: SettingsStore, private val onChanged: () ->
 }
 
 sealed interface TeamAction {
-    /** [routers] holds 0 and/or 1; [filter] keeps only model ids containing that text. */
+    /**
+     * [routers] holds 0 and/or 1; [filter] keeps only model ids containing that text. [icon] and [color] are [WorkerLook]
+     * keys, blank when Lily gave none or an unknown one, which means the role's own look.
+     */
     data class Create(
         val name: String,
         val role: WorkerType,
@@ -47,6 +50,8 @@ sealed interface TeamAction {
         val instructions: String,
         val filter: String,
         val routers: List<Int>,
+        val icon: String = "",
+        val color: String = "",
     ) : TeamAction
 
     data class Dismiss(val name: String) : TeamAction
@@ -78,6 +83,8 @@ object WorkerTeam {
                             2 -> listOf(1)
                             else -> listOf(0, 1)
                         },
+                        icon = o.optString("icon").trim().lowercase().takeIf { it in WorkerLook.icons }.orEmpty(),
+                        color = o.optString("color").trim().lowercase().takeIf { it in WorkerLook.colors }.orEmpty(),
                     )
                 }
                 "dismiss" -> TeamAction.Dismiss(o.getString("name"))
@@ -131,6 +138,8 @@ object WorkerTeam {
                             model = model,
                             instructions = instructions,
                             byLily = true,
+                            iconKey = action.icon,
+                            colorKey = action.color,
                         )
                     }
                     workers = workers + made
@@ -169,9 +178,11 @@ class ManagerWorker(gateway: ModelGateway, tools: ToolSystem, private val roster
         }.ifBlank { "(none)" }
         val roles = WorkerType.values().filter { it != WorkerType.TEAM }.joinToString { it.name }
         val system = "You manage a team of workers for the person. Reply with ONLY a JSON array of actions. " +
-            "Create: {\"action\":\"create\",\"name\":\"Tester\",\"role\":\"TEST\",\"count\":3,\"instructions\":\"...\",\"router\":0,\"modelFilter\":\"free\"}. " +
+            "Create: {\"action\":\"create\",\"name\":\"Tester\",\"role\":\"TEST\",\"count\":3,\"instructions\":\"...\",\"router\":0,\"modelFilter\":\"free\",\"icon\":\"check\",\"color\":\"pad\"}. " +
             "role is one of $roles. instructions are short rules for that job (under 600 characters). " +
             "router 0 uses both routers, 1 or 2 uses only that one. modelFilter is optional: only models whose id contains it are used. " +
+            "icon is optional and one of ${WorkerLook.icons.joinToString()}; color is optional and one of ${WorkerLook.colors.joinToString()}. " +
+            "Leave them out to give the worker its role's own look. " +
             "Dismiss: {\"action\":\"dismiss\",\"name\":\"Tester\"} removes the workers you made whose name is that or starts with it; \"*\" removes all you made. " +
             "You cannot dismiss workers the person made. Current workers:\n$current"
         val reply = gateway.complete(ModelRequest(task.description, system = system, model = WorkerModels.forWorker(type))).text
