@@ -66,27 +66,70 @@ import java.io.File
 /**
  * The app. Six sections: Work (the Acode style code editor with Lily's coding and file workers), Chat (free talk with Lily, and the
  * queue of background tasks), Browse, Plugins, AI (Lily, workers, routers and models, behind a drawer) and Settings. On a phone they sit in a bar along the
- * bottom, within thumb's reach; on a wide screen they run down the left edge. Files live in the app's own `workspace` folder, or,
- * while a remote connection is open, in the local copy of that server folder.
+ * bottom, within thumb's reach; on a wide screen they run down the left edge. Files live in Documents/Lily/projects, where Termux can
+ * use them too (see [SharedWorkspace]), or in the app's private `workspace` folder until the person allows that. While a remote
+ * connection is open they are in the local copy of that server folder. Settings, plugins, drafts and tasks always stay private.
  */
 class EditorActivity : ComponentActivity() {
     private lateinit var state: EditorState
     private var browse: BrowseState? = null
+    private var onShared = false
+
+    // Storage was allowed but the shared folder could not be made; without this, onResume would rebuild the screen forever.
+    private var sharedBroken = false
+    private var remoteOpen = false
 
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
         val remote = RemoteHub.active
-        val root = remote?.localRoot ?: File(filesDir, "workspace").apply { mkdirs() }
+        remoteOpen = remote != null
+        val privateRoot = File(filesDir, "workspace").apply { mkdirs() }
+        val (localRoot, shared) = if (remote == null) SharedWorkspace.choose(this, privateRoot) else (privateRoot to false)
+        onShared = shared
+        sharedBroken = remote == null && !shared && SharedWorkspace.allowed(this)
+        val root = remote?.localRoot ?: localRoot
         val drafts = DraftStore(File(remote?.dir ?: filesDir, "drafts"))
         val prefs = EditorPrefs(applicationContext, remote?.profile?.id.orEmpty())
         state = EditorState(root, drafts, prefs, fonts = ai.lily.app.lib.editor.FontStore(File(filesDir, "fonts")))
+
+        // The first time the shared folder is used, what is in the private workspace is copied over. Nothing is overwritten or removed,
+        // and the step repeats until every file made it, so a failed copy never leaves files only in a place the person cannot see.
+        val storagePrefs = getSharedPreferences("storage", MODE_PRIVATE)
+        var storageNote: String? = null
+        if (shared && !storagePrefs.getBoolean(MOVED, false)) {
+            val (copied, failed) = SharedWorkspace.copyMissing(privateRoot, root)
+            if (failed == 0) storagePrefs.edit().putBoolean(MOVED, true).apply()
+            storageNote = when {
+                failed > 0 -> "Copied $copied files to ${root.path}; $failed could not be copied and are still in the private workspace"
+                copied > 0 -> "Copied $copied files to ${root.path}"
+                else -> null
+            }
+        }
+        val storageHint = when {
+            remote != null || shared -> null
+            sharedBroken -> "Could not use ${SharedWorkspace.folder().path}, so files stay private"
+            else -> "Files are private. Command palette > Shared workspace lets Termux use them too"
+        }
+        (storageNote ?: storageHint)?.let { state.message = it }
 
         // The phone's file picker, for adding a font file. Fonts have no single file type, so every file is offered and the app checks it.
         val fontPicker = registerForActivityResult(ActivityResultContracts.OpenDocument()) { uri: Uri? ->
             if (uri != null) lifecycleScope.launch { addFont(uri) }
         }
         state.importFont = { fontPicker.launch(arrayOf("*/*")) }
+
+        // Android 8 to 9 asks for the storage permission here; Android 11+ sends the person to the "All files access" screen instead.
+        val storagePermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted -> if (granted) recreate() }
+        fun askStorage() {
+            when {
+                remote != null -> state.message = "A remote workspace keeps its copy in the app's private folder"
+                shared -> state.message = "Files are in ${root.path}. In Termux run termux-setup-storage once to reach them"
+                Build.VERSION.SDK_INT >= 30 -> startActivity(SharedWorkspace.settingsIntent(this))
+                Build.VERSION.SDK_INT >= 29 -> state.message = "This Android version cannot share the folder, so files stay private"
+                else -> storagePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
+            }
+        }
 
         // Remote workspaces. Connecting or disconnecting rebuilds this screen on the right folder.
         val remoteUi = RemoteUi(
@@ -185,6 +228,7 @@ class EditorActivity : ComponentActivity() {
         val extraCommands = listOf(
             ExtraCommand("Ask Lily") { ui.ask = true; askTermuxPermission() },
             ExtraCommand("Git control") { git.open = true; askTermuxPermission() },
+            ExtraCommand("Shared workspace") { askStorage() },
             ExtraCommand("Remote workspaces") { remoteUi.manager = true },
             ExtraCommand("Plugins") { nav.section = Section.Plugins; askTermuxPermission() },
             ExtraCommand("New folder") { ui.dialog = WsDialog.NewFolder },
@@ -257,6 +301,12 @@ class EditorActivity : ComponentActivity() {
         }
     }
 
+    /** Back from the "All files access" screen: if it was turned on, rebuild on the shared folder. */
+    override fun onResume() {
+        super.onResume()
+        if (!remoteOpen && !onShared && !sharedBroken && SharedWorkspace.allowed(this)) recreate()
+    }
+
     /**
      * Palette entries from plugins that are on. Running one sends its text, with the selection, file and language filled in, to Lily.
      * The reply and any proposed edits come back the usual way, for the person to read and accept.
@@ -315,5 +365,6 @@ class EditorActivity : ComponentActivity() {
 
     private companion object {
         const val TERMUX_RUN_COMMAND = "com.termux.permission.RUN_COMMAND"
+        const val MOVED = "workspaceMoved"
     }
 }
