@@ -6,6 +6,12 @@
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
+    <!-- Lets the person choose a shared workspace folder (Settings, Workspace folder) that Termux and a file manager can also see.
+         Without it, or until the person allows it, the app's private workspace is used. -->
+    <uses-permission android:name="android.permission.MANAGE_EXTERNAL_STORAGE" />
+    <uses-permission
+        android:name="android.permission.WRITE_EXTERNAL_STORAGE"
+        android:maxSdkVersion="29" />
     <!-- Used only by the optional Termux plugin (assets/plugins/termux.json). Android needs this declared at build
          time; it does nothing unless that plugin is installed, turned on and allowed. -->
     <uses-permission android:name="com.termux.permission.RUN_COMMAND" />
