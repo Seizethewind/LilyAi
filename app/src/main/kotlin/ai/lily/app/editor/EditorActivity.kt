@@ -77,6 +77,12 @@ class EditorActivity : ComponentActivity() {
     private lateinit var state: EditorState
     private var browse: BrowseState? = null
 
+    /**
+     * The folder this editor was opened on, which is where Lily's new files are made. It is picked once, when the screen is built,
+     * so Settings compares it with the folder the person chose to say whether that folder is really in use yet.
+     */
+    val workspaceRoot: File get() = state.root
+
     override fun onCreate(savedInstanceState: Bundle?) {
         enableEdgeToEdge()
         super.onCreate(savedInstanceState)
