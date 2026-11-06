@@ -12,6 +12,7 @@ import ai.lily.app.remote.RemoteStore
 import ai.lily.app.settings.EncryptedSettingsStore
 import ai.lily.app.shell.AiHost
 import ai.lily.app.shell.AiNav
+import ai.lily.app.shell.AiRoster
 import ai.lily.app.shell.AiState
 import ai.lily.app.shell.AppBottomBar
 import ai.lily.app.shell.AppSidebar
@@ -126,10 +127,13 @@ class EditorActivity : ComponentActivity() {
         var builtFor = -1
         // The AI section's state lives here, not in its screen, so the models it loaded are still there when the person comes back to it.
         val ai = AiState(settingsStore, onChanged = { lily = null })
+        // Lily's team changes go through the AI section's state, so what she makes shows there and is not overwritten by its next edit.
+        val roster = AiRoster(ai)
         fun currentLily(): Lily {
             val wanted = plugins.version
             return lily.takeIf { builtFor == wanted } ?: LilyFactory.create(
-                settingsStore.load(), session.bridge, root, plugins.host, gitRepo = { git.repo.trim() },
+                settingsStore.load(), session.bridge, root, plugins.host,
+                roster = roster, teamGate = plugins.gate, gitRepo = { git.repo.trim() },
             ).also {
                 lily = it
                 builtFor = wanted

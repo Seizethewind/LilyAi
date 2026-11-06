@@ -14,6 +14,7 @@ import ai.lily.app.gateway.RouterModelGateway
 import ai.lily.app.memory.TursoClient
 import ai.lily.app.memory.TursoJournal
 import ai.lily.app.memory.TursoProvenFacts
+import ai.lily.app.plugins.ConfirmationGate
 import ai.lily.app.plugins.PluginHost
 import ai.lily.app.sandbox.PandaStackClient
 import ai.lily.app.settings.AppSettings
@@ -41,7 +42,9 @@ object LilyFactory {
      * [workspaceRoot] is the project folder; with it the coding worker can find relevant files beyond the open tabs.
      * [plugins] adds the tools of every plugin that is on and allowed (for example the optional Termux plugin). The app's
      * own tools are registered first, so a plugin can never replace one of them.
-     * [roster] is the list of created workers that Lily's own TEAM worker reads and changes. Without it there is no TEAM worker.
+     * [roster] is the list of created workers that Lily's own TEAM worker reads and changes. Without it there is no TEAM worker,
+     * and the planner is not told about one.
+     * [teamGate] asks the person to approve the TEAM worker's changes before they are made; without one they are made at once.
      * [gitRepo] is the repo folder in Termux that the git worker uses when a task names none (the one set in the Git dialog).
      * Workers the person created (settings.workers) take over their role from the built-in worker, each with its own router,
      * model and instructions. A role with no created workers keeps the built-in one.
@@ -54,6 +57,7 @@ object LilyFactory {
         workspaceRoot: File? = null,
         plugins: PluginHost? = null,
         roster: WorkerRoster? = null,
+        teamGate: ConfirmationGate? = null,
         gitRepo: () -> String = { "" },
     ): Lily {
         val gateway = RouterModelGateway(settings.router)
@@ -77,7 +81,7 @@ object LilyFactory {
             WorkerType.FILE -> FileWorker(g, tools, editor)
             WorkerType.GENERAL -> GeneralWorker(g, tools)
             WorkerType.TEST -> ModelWorker(WorkerType.TEST, g, tools)
-            WorkerType.TEAM -> ManagerWorker(g, tools, checkNotNull(roster) { "The TEAM worker needs a roster" })
+            WorkerType.TEAM -> ManagerWorker(g, tools, checkNotNull(roster) { "The TEAM worker needs a roster" }, teamGate)
         }
 
         val created = settings.workers.filter { it.enabled }.groupBy { it.role }
@@ -106,6 +110,7 @@ object LilyFactory {
         } else null
 
         val plannerRouter = if (lily.router == 1 && second != null) second else gateway
-        return Lily(LlmPlanner(LilyGateway(plannerRouter, lily.instructions, lily.model)), manager, Context(), memory)
+        val planner = LlmPlanner(LilyGateway(plannerRouter, lily.instructions, lily.model), teamRole = roster != null)
+        return Lily(planner, manager, Context(), memory)
     }
 }
