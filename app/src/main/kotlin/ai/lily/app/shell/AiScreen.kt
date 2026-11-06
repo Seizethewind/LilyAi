@@ -86,6 +86,14 @@ class AiState(private val store: EncryptedSettingsStore, private val onChanged: 
         onChanged()
     }
 
+    /** Reads the store again. Call it after another screen (Settings) saved to it, so the next change here does not undo that save. */
+    fun reload() {
+        settings = store.load()
+    }
+
+    /** Replaces the whole worker list in one save. This is how Lily's team changes arrive (see [AiRoster]). */
+    fun setWorkers(workers: List<WorkerProfile>) = commit(settings.copy(workers = workers))
+
     fun saveRouter(index: Int, name: String, kind: RouterKind, url: String, key: String) {
         val address = url.trim()
         if (index == 0) {
