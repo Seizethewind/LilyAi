@@ -78,13 +78,22 @@ class PluginServices(context: Context) {
     /**
      * Installs the manifests that ship in assets/plugins, once each. They arrive turned off with nothing allowed. A
      * plugin the person later removes is not put back, because the ids already offered are remembered.
+     * One that is already installed is updated when the app ships a newer version of it. An update keeps what the person
+     * decided (on or off, allowed permissions, "don't ask again" for tools that did not change) and never adds an allowance.
      */
     fun installBundled() {
         val prefs = app.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
         val offered = prefs.getStringSet(OFFERED, emptySet()).orEmpty().toMutableSet()
         var changed = false
         for ((manifest, text) in bundled()) {
-            if (manifest.id in offered) continue
+            if (manifest.id in offered) {
+                val have = registry.get(manifest.id)
+                if (have != null && BundledUpdate.isNewer(manifest.version, have.manifest.version)) {
+                    registry.install(text)
+                    changed = true
+                }
+                continue
+            }
             offered += manifest.id
             if (registry.get(manifest.id) == null) {
                 registry.install(text)
