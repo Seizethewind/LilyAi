@@ -27,6 +27,12 @@ object ManifestParser {
     /** The optional tile colour of a plugin card: #RRGGBB. */
     val ACCENT = Regex("^#[0-9A-Fa-f]{6}$")
 
+    /**
+     * The screens of the app that a plugin's "screen" field may name. The app has to have built each one, so a manifest can
+     * only point at a screen that exists; it can never bring its own.
+     */
+    val SCREENS = setOf("discord")
+
     private const val MAX_PERMISSIONS = 10
     private const val MAX_TOOLS = 20
     private const val MAX_PARAMS = 8
@@ -92,6 +98,7 @@ object ManifestParser {
         val author = shown(root, "author", 0, 60, "plugin", errors)
         val icon = optionalText(root, "icon", "must be one emoji or one or two letters", errors) { isValidIcon(it) }
         val accent = optionalText(root, "accent", "must look like #1A2B3C", errors) { ACCENT.matches(it) }
+        val screen = optionalText(root, "screen", "must be one of: ${SCREENS.sorted().joinToString()}", errors) { it in SCREENS }
 
         val permissions = LinkedHashSet<Permission>()
         val permissionList = root.opt("permissions")
@@ -155,7 +162,7 @@ object ManifestParser {
             return ParseResult.Invalid(errors.take(MAX_ERRORS))
         }
         return ParseResult.Ok(
-            PluginManifest(id, name, version, description, permissions.toList(), tools, commands, snippets, author, icon, accent, settings),
+            PluginManifest(id, name, version, description, permissions.toList(), tools, commands, snippets, author, icon, accent, settings, screen),
         )
     }
 
