@@ -35,7 +35,8 @@ class LlmPlanner(private val gateway: ModelGateway, private val teamRole: Boolea
             "worker is one of CODING, RESEARCH, BUILD, GIT, FILE, GENERAL, TEST${if (teamRole) ", TEAM" else ""}. " +
             "Use BUILD for anything to run in a shell or terminal (Termux), and for builds. " +
             "Use TEST to review code, hunt for bugs or write test cases, and to check a web page: " +
-            "put the full address (https://...) in that task's description, or say the current website to check the open one." +
+            "put the full address (https://...) in that task's description, or say the current website to check the open one. " +
+            "To have a page used, not only looked at, say so in the task (for example \"click through the signup form at https://...\")." +
             if (teamRole) {
                 " Use TEAM only to create, change or dismiss the person's workers (for example \"make 5 testers\"); " +
                     "put the whole wish in one TEAM task."
