@@ -132,7 +132,7 @@ fun PluginsScreen(services: PluginServices, modifier: Modifier = Modifier) {
             Banner(message, Tone.Petal, Modifier.padding(horizontal = 20.dp, vertical = 8.dp), actionLabel = "Dismiss", onAction = { note = null })
         }
         if (shownScreen != null) {
-            PluginScreenHost(shownScreen, onBack = { screen = null }, modifier = Modifier.weight(1f))
+            PluginScreenHost(shownScreen, services, onBack = { screen = null }, modifier = Modifier.weight(1f))
         } else if (open != null) {
             PluginDetail(
                 listing = open,
