@@ -11,6 +11,7 @@ import java.net.URL
 /**
  * One finished request: the address already passed [HttpGuard.checkUrl]. [maxBytes] is how much of the answer is read; plugin
  * tools keep the default, and a screen of the app that has to show a long answer (the Discord viewer) may ask for more.
+ * With [binary] the answer is kept as bytes in [HttpReply.Done.bytes] (a picture) instead of being read as text.
  */
 data class HttpCall(
     val method: HttpMethod,
@@ -20,11 +21,15 @@ data class HttpCall(
     val timeoutMs: Long,
     val permission: Permission.Http,
     val maxBytes: Int = HttpBridge.MAX_RESPONSE_BYTES,
+    val binary: Boolean = false,
 )
 
 sealed interface HttpReply {
-    /** [body] is cut at the call's [HttpCall.maxBytes]; [truncated] says more was left unread. */
-    data class Done(val status: Int, val body: String, val truncated: Boolean) : HttpReply
+    /**
+     * [body] is cut at the call's [HttpCall.maxBytes]; [truncated] says more was left unread. For a [HttpCall.binary] call the
+     * body is empty and the answer is in [bytes].
+     */
+    data class Done(val status: Int, val body: String, val truncated: Boolean, val bytes: ByteArray? = null) : HttpReply
 
     data class Failed(val reason: FailReason, val message: String) : HttpReply
 }
@@ -93,7 +98,7 @@ class UrlConnectionHttpBridge : HttpBridge {
                         continue
                     }
                     val stream = if (status in 200..299) conn.inputStream else conn.errorStream
-                    return readCapped(status, stream, call.maxBytes)
+                    return readCapped(status, stream, call.maxBytes, call.binary)
                 } finally {
                     conn.disconnect()
                 }
@@ -107,7 +112,7 @@ class UrlConnectionHttpBridge : HttpBridge {
         }
     }
 
-    private fun readCapped(status: Int, stream: java.io.InputStream?, maxBytes: Int): HttpReply {
+    private fun readCapped(status: Int, stream: java.io.InputStream?, maxBytes: Int, binary: Boolean): HttpReply {
         val out = ByteArrayOutputStream()
         var truncated = false
         stream?.use { input ->
@@ -126,7 +131,11 @@ class UrlConnectionHttpBridge : HttpBridge {
                 total += n
             }
         }
-        return HttpReply.Done(status, out.toString(Charsets.UTF_8.name()), truncated)
+        return if (binary) {
+            HttpReply.Done(status, "", truncated, out.toByteArray())
+        } else {
+            HttpReply.Done(status, out.toString(Charsets.UTF_8.name()), truncated)
+        }
     }
 
     private companion object {

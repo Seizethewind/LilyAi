@@ -44,6 +44,10 @@ sealed interface DiscordResult<out T> {
  * - there is no call that deletes, kicks, bans or changes roles, and the http layer has no DELETE;
  * - the token is only put in the Authorization header, is never shown in a question and is removed from every message here.
  * Discord's Gateway (live updates) is a websocket and is not reachable, so the screen polls [messages] with `after`.
+ *
+ * Pictures ([avatar]) come from a second host, cdn.discordapp.com/avatars/, and need a second permission that the person
+ * allows on the plugin's page. They carry no token and ask no question: allowing the permission is the answer, and what is
+ * fetched is a public avatar picture, checked to be a png of at most 256 KB.
  */
 class DiscordApi(
     private val registry: PluginRegistry,
@@ -103,6 +107,50 @@ class DiscordApi(
         )
         return request(TOOL_SEND, HttpMethod.POST, "$BASE/channels/$channelId/messages", body, shown, POST_TIMEOUT_MS) {
             DiscordParse.message(JSONObject(it)) ?: throw IllegalStateException("no message in the answer")
+        }
+    }
+
+    /** Whether pictures may be fetched right now: the plugin is installed and on, and the person allowed the avatar host. */
+    fun avatarsAllowed(): Boolean {
+        val plugin = registry.get(PLUGIN_ID) ?: return false
+        return plugin.state.enabled && AVATAR_PERMISSION.key in plugin.state.granted
+    }
+
+    /**
+     * One person's avatar as png bytes, [size] being one of [AvatarId.SIZES]. Sends no token and asks no question (see the class
+     * note). A failure is normal here (a picture that is gone, the person has not allowed pictures) and the screen falls back to initials.
+     */
+    suspend fun avatar(userId: String, hash: String, size: Int = AvatarId.SMALL): DiscordResult<ByteArray> {
+        if (!Snowflake.isValid(userId)) return notAnId("user")
+        if (!AvatarId.isValidHash(hash)) return DiscordResult.Failed("That is not a valid avatar.")
+        if (size !in AvatarId.SIZES) return DiscordResult.Failed("Avatars come in the sizes ${AvatarId.SIZES.sorted().joinToString()}.")
+        if (!avatarsAllowed()) {
+            return DiscordResult.Failed(
+                "Pictures are off. Allow the Discord plugin to reach ${AVATAR_PERMISSION.host}${AVATAR_PERMISSION.pathPrefix} on its page in Plugins.",
+                needsSetup = true,
+            )
+        }
+        val url = AvatarId.url(userId, hash, size)
+        HttpGuard.checkUrl(url, AVATAR_PERMISSION)?.let { return DiscordResult.Failed("That address is not allowed: $it") }
+        val headers = LinkedHashMap<String, String>()
+        headers["User-Agent"] = USER_AGENT
+        val reply = try {
+            http.call(HttpCall(HttpMethod.GET, url, headers, null, AVATAR_TIMEOUT_MS, AVATAR_PERMISSION, maxBytes = MAX_AVATAR_BYTES, binary = true))
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            HttpReply.Failed(FailReason.ERROR, e.message ?: e.javaClass.simpleName)
+        }
+        return when (reply) {
+            is HttpReply.Failed -> DiscordResult.Failed("Could not load the picture: ${reply.message}")
+            is HttpReply.Done -> {
+                val bytes = reply.bytes
+                when {
+                    reply.status !in 200..299 -> DiscordResult.Failed("The picture server answered http ${reply.status}.")
+                    bytes == null || reply.truncated || !AvatarId.looksLikePng(bytes) -> DiscordResult.Failed("That was not a picture this app can show.")
+                    else -> DiscordResult.Ok(bytes)
+                }
+            }
         }
     }
 
@@ -228,15 +276,22 @@ class DiscordApi(
         /** How much of an answer is read: a full page of messages with embeds, far more than a plugin tool's 16 KB. */
         const val MAX_ANSWER_BYTES = 512 * 1024
 
-        private const val USER_AGENT = "DiscordBot (https://github.com/Seizethewind/LilyAi, 1.1.0)"
+        /** The most of one avatar picture that is read. A 256 pixel png is a few KB; more than this is not an avatar. */
+        const val MAX_AVATAR_BYTES = 256 * 1024
+
+        private const val USER_AGENT = "DiscordBot (https://github.com/Seizethewind/LilyAi, 1.2.0)"
         private const val GET_TIMEOUT_MS = 20_000L
         private const val POST_TIMEOUT_MS = 30_000L
+        private const val AVATAR_TIMEOUT_MS = 10_000L
         private const val DEFAULT_WAIT_MS = 5_000L
         private const val MIN_WAIT_MS = 1_000L
         private const val MAX_WAIT_MS = 60_000L
         private const val MAX_SHOWN = 2_000
 
-        /** The one permission this uses: the same one the Discord plugin asks for. */
+        /** The permission the Discord plugin asks for to talk to the API. */
         val PERMISSION = Permission.Http("discord.com", "/api/v10/")
+
+        /** The second one, for pictures: only the avatars folder of Discord's picture host. */
+        val AVATAR_PERMISSION = Permission.Http("cdn.discordapp.com", "/avatars/")
     }
 }
