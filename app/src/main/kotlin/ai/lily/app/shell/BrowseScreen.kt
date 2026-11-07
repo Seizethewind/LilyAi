@@ -10,10 +10,13 @@ import ai.lily.app.ui.ScreenFrame
 import android.content.Context
 import android.graphics.Bitmap
 import android.net.Uri
+import android.os.SystemClock
 import android.view.ViewGroup
+import android.webkit.ConsoleMessage
 import android.webkit.WebChromeClient
 import android.webkit.WebResourceError
 import android.webkit.WebResourceRequest
+import android.webkit.WebResourceResponse
 import android.webkit.WebView
 import android.webkit.WebViewClient
 import androidx.activity.compose.BackHandler
@@ -70,6 +73,9 @@ class BrowseState(context: Context) {
     var canBack by mutableStateOf(false)
     var canForward by mutableStateOf(false)
 
+    /** Console messages, failed requests and load time of the current page, for Lily's site checks. */
+    val log = PageLog()
+
     val web: WebView = WebView(context).apply {
         settings.javaScriptEnabled = true
         settings.allowFileAccess = false
@@ -79,12 +85,14 @@ class BrowseState(context: Context) {
                 loading = true
                 failed = false
                 if (url != null) address = url
+                log.started(SystemClock.elapsedRealtime())
                 syncHistory(view)
             }
 
             override fun onPageFinished(view: WebView?, url: String?) {
                 loading = false
                 if (url != null) address = url
+                log.finished(SystemClock.elapsedRealtime())
                 syncHistory(view)
             }
 
@@ -93,15 +101,28 @@ class BrowseState(context: Context) {
             }
 
             override fun onReceivedError(view: WebView?, request: WebResourceRequest?, error: WebResourceError?) {
+                log.add(PageLog.Kind.Error, "${error?.description} ${request?.url}")
                 if (request?.isForMainFrame == true) {
                     failed = true
                     loading = false
                 }
             }
+
+            override fun onReceivedHttpError(view: WebView?, request: WebResourceRequest?, errorResponse: WebResourceResponse?) {
+                log.add(PageLog.Kind.Http, "${errorResponse?.statusCode} ${request?.url}")
+            }
         }
         webChromeClient = object : WebChromeClient() {
             override fun onProgressChanged(view: WebView?, newProgress: Int) {
                 loadProgress = newProgress / 100f
+            }
+
+            override fun onConsoleMessage(message: ConsoleMessage?): Boolean {
+                if (message != null) {
+                    log.add(PageLog.Kind.Console, "${message.messageLevel()}: ${message.message()} (${message.sourceId()}:${message.lineNumber()})")
+                }
+                // False keeps Android's own logcat line too.
+                return false
             }
         }
     }

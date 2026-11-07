@@ -16,6 +16,7 @@ import ai.lily.app.shell.AiRoster
 import ai.lily.app.shell.AiState
 import ai.lily.app.shell.AppBottomBar
 import ai.lily.app.shell.AppSidebar
+import ai.lily.app.shell.BrowseBridge
 import ai.lily.app.shell.BrowseScreen
 import ai.lily.app.shell.BrowseState
 import ai.lily.app.shell.ChatScreen
@@ -129,6 +130,8 @@ class EditorActivity : ComponentActivity() {
         val nav = ShellNav()
         val aiNav = AiNav()
         val browser = BrowseState(this).also { browse = it }
+        // How Lily's testers read the Browse page. It brings the Browse section on screen first, because a page that is not on screen has no size.
+        val browseBridge = BrowseBridge(browser) { nav.section = Section.Browse }
         val settingsStore = EncryptedSettingsStore(applicationContext)
 
         // Termux's run-command permission is a runtime one: declaring it is not enough, Android must be asked.
@@ -158,6 +161,7 @@ class EditorActivity : ComponentActivity() {
                 settingsStore.load(), session.bridge, root, plugins.host,
                 roster = roster, teamGate = plugins.gate, gitRepo = { git.repo.trim() },
                 agentInstructions = agentMd,
+                browser = browseBridge, browserGate = plugins.gate,
             ).also {
                 lily = it
                 builtFor = wanted
