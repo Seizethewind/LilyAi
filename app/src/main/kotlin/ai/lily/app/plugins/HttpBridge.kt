@@ -8,7 +8,10 @@ import java.net.InetAddress
 import java.net.SocketTimeoutException
 import java.net.URL
 
-/** One finished request: the address already passed [HttpGuard.checkUrl]. */
+/**
+ * One finished request: the address already passed [HttpGuard.checkUrl]. [maxBytes] is how much of the answer is read; plugin
+ * tools keep the default, and a screen of the app that has to show a long answer (the Discord viewer) may ask for more.
+ */
 data class HttpCall(
     val method: HttpMethod,
     val url: String,
@@ -16,10 +19,11 @@ data class HttpCall(
     val body: String?,
     val timeoutMs: Long,
     val permission: Permission.Http,
+    val maxBytes: Int = HttpBridge.MAX_RESPONSE_BYTES,
 )
 
 sealed interface HttpReply {
-    /** [body] is cut at [HttpBridge.MAX_RESPONSE_BYTES]; [truncated] says more was left unread. */
+    /** [body] is cut at the call's [HttpCall.maxBytes]; [truncated] says more was left unread. */
     data class Done(val status: Int, val body: String, val truncated: Boolean) : HttpReply
 
     data class Failed(val reason: FailReason, val message: String) : HttpReply
@@ -30,6 +34,7 @@ interface HttpBridge {
     suspend fun call(call: HttpCall): HttpReply
 
     companion object {
+        /** The default amount of an answer that is read. */
         const val MAX_RESPONSE_BYTES = 16 * 1024
     }
 }
@@ -42,7 +47,7 @@ object NoHttpBridge : HttpBridge {
 /**
  * Sends the request with the platform's connection. It refuses a host that resolves to a private or local address, never
  * follows a redirect off the allowed host or path (and follows none for a request that changes something), reads at most
- * [HttpBridge.MAX_RESPONSE_BYTES] of the answer, and times out.
+ * the call's [HttpCall.maxBytes] of the answer (16 KB unless the call says otherwise), and times out.
  * Known limit: the address is checked and then the connection resolves the name again, so a host that answers with a
  * public address first and a private one next could slip through. The person has allowed this host by name.
  */
@@ -88,7 +93,7 @@ class UrlConnectionHttpBridge : HttpBridge {
                         continue
                     }
                     val stream = if (status in 200..299) conn.inputStream else conn.errorStream
-                    return readCapped(status, stream)
+                    return readCapped(status, stream, call.maxBytes)
                 } finally {
                     conn.disconnect()
                 }
@@ -102,7 +107,7 @@ class UrlConnectionHttpBridge : HttpBridge {
         }
     }
 
-    private fun readCapped(status: Int, stream: java.io.InputStream?): HttpReply {
+    private fun readCapped(status: Int, stream: java.io.InputStream?, maxBytes: Int): HttpReply {
         val out = ByteArrayOutputStream()
         var truncated = false
         stream?.use { input ->
@@ -111,7 +116,7 @@ class UrlConnectionHttpBridge : HttpBridge {
             while (true) {
                 val n = input.read(chunk)
                 if (n < 0) break
-                val room = HttpBridge.MAX_RESPONSE_BYTES - total
+                val room = maxBytes - total
                 if (n > room) {
                     out.write(chunk, 0, room)
                     truncated = true
