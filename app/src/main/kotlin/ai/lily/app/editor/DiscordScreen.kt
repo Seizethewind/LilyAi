@@ -33,6 +33,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.PaddingValues
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
@@ -80,6 +81,7 @@ import androidx.compose.ui.unit.sp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.LifecycleOwner
+import kotlinx.coroutines.launch
 import java.text.DateFormat
 import java.util.Date
 
@@ -177,7 +179,7 @@ private fun TopBar(
                 }
             }
         }
-        if (state.loading) LilyBloom(size = 20.dp, modifier = Modifier.padding(end = 4.dp))
+        if (state.loading) LilyBloom(Modifier.padding(end = 4.dp), size = 20.dp)
         LilyIconButton(Icons.Filled.Refresh, "Refresh", onClick = onRefresh)
         LilyIconButton(Icons.Filled.Close, "Close Discord", onClick = onClose)
     }
@@ -196,7 +198,7 @@ private fun ChannelList(state: DiscordState, pictures: Boolean, onPick: (Discord
         if (state.guilds.size > 1) {
             item {
                 LazyRow(
-                    contentPadding = androidx.compose.foundation.layout.PaddingValues(horizontal = 16.dp, vertical = 12.dp),
+                    contentPadding = PaddingValues(horizontal = 16.dp, vertical = 12.dp),
                     horizontalArrangement = Arrangement.spacedBy(8.dp),
                 ) {
                     items(state.guilds.size) { i ->
@@ -318,7 +320,7 @@ private fun MessagePane(state: DiscordState, pictures: Boolean, readAutoApproved
             if (count == 0 && !state.loading) {
                 EmptyState("No messages", "Nothing has been said in this channel yet, or the bot may not read its history.")
             } else {
-                LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = androidx.compose.foundation.layout.PaddingValues(vertical = 8.dp)) {
+                LazyColumn(Modifier.fillMaxSize(), state = list, contentPadding = PaddingValues(vertical = 8.dp)) {
                     if (older == 1) {
                         item(key = "older") {
                             Box(Modifier.fillMaxWidth().padding(8.dp), contentAlignment = Alignment.Center) {
@@ -336,7 +338,12 @@ private fun MessagePane(state: DiscordState, pictures: Boolean, readAutoApproved
                 Box(Modifier.align(Alignment.BottomCenter).padding(bottom = 8.dp)) {
                     LilyButton(
                         if (unseen == 1) "1 new message" else "$unseen new messages",
-                        onClick = { scope.launch2 { list.animateScrollToItem(count - 1 + older); unseen = 0 } },
+                        onClick = {
+                            scope.launch {
+                                list.animateScrollToItem(count - 1 + older)
+                                unseen = 0
+                            }
+                        },
                         kind = ButtonKind.Primary,
                     )
                 }
@@ -348,15 +355,14 @@ private fun MessagePane(state: DiscordState, pictures: Boolean, readAutoApproved
             onValueChange = { text = it },
             hint = "Message # ${channel.name} (asks first)",
             sendLabel = "Send",
-            onSend = { scope.launch2 { if (state.send(text)) text = "" } },
+            onSend = {
+                scope.launch {
+                    if (state.send(text)) text = ""
+                }
+            },
             enabled = !state.sending,
         )
     }
-}
-
-/** [kotlinx.coroutines.launch] without importing it twice into a file that already reads long. */
-private fun kotlinx.coroutines.CoroutineScope.launch2(block: suspend () -> Unit) {
-    this.launch { block() }
 }
 
 @Composable
