@@ -1,5 +1,6 @@
 package ai.lily.app.plugins
 
+import ai.lily.app.discord.DiscordApi
 import android.content.Context
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableIntStateOf
@@ -54,6 +55,9 @@ class PluginServices(context: Context) {
     val secrets: PluginSecrets = EncryptedPluginSecrets(app)
     private val http = UrlConnectionHttpBridge()
     val host = PluginHost(registry, bridge, gate, http, secrets)
+
+    /** What the Discord screen talks to Discord with: the Discord plugin's own rules, token and questions (see [DiscordApi]). */
+    val discord: DiscordApi by lazy { DiscordApi(registry, secrets, http, gate) }
 
     var version by mutableIntStateOf(0)
         private set
