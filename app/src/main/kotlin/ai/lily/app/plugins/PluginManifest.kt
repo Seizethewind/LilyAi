@@ -19,6 +19,11 @@ data class PluginManifest(
     val accent: String = "",
     /** Values the person fills in on the plugin's page (a token, a channel list). Secret ones live in encrypted storage. */
     val settings: List<SettingSpec> = emptyList(),
+    /**
+     * The name of one of the app's own screens (one of [ManifestParser.SCREENS]) that the plugin's Open button shows, or "" for
+     * none. It only names a screen the app already has: it adds no code, no permission and no ability.
+     */
+    val screen: String = "",
 )
 
 /** Something a plugin asks the person to allow. */

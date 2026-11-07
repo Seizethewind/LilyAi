@@ -2,12 +2,13 @@
   "schema": 1,
   "id": "lily.discord",
   "name": "Discord",
-  "version": "1.0.0",
-  "description": "Read channels and messages of a Discord server and post messages, as your own bot. It can never delete, kick, ban or change roles.",
+  "version": "1.2.0",
+  "description": "Read channels and messages of a Discord server and post messages, as your own bot. It can never delete, kick, ban or change roles. The second permission is only for showing people's profile pictures.",
   "author": "Lily",
   "icon": "D",
   "accent": "#5865F2",
-  "permissions": ["http:discord.com/api/v10/"],
+  "screen": "discord",
+  "permissions": ["http:discord.com/api/v10/", "http:cdn.discordapp.com/avatars/"],
   "settings": [
     {
       "name": "token",

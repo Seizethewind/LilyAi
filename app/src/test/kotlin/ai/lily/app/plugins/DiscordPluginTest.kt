@@ -35,11 +35,16 @@ class DiscordPluginTest {
     }
 
     @Test
-    fun theBundledManifestParsesAndIsPinnedToTheApiPath() {
+    fun theBundledManifestParsesAndEveryToolIsPinnedToTheApiPath() {
         val m = manifest()
-        assertEquals(listOf<Permission>(Permission.Http("discord.com", "/api/v10/")), m.permissions)
+        // The second permission is only for the Discord screen's profile pictures; no tool uses it.
+        assertEquals(
+            listOf<Permission>(Permission.Http("discord.com", "/api/v10/"), Permission.Http("cdn.discordapp.com", "/avatars/")),
+            m.permissions,
+        )
         assertEquals(setOf("discord_list_channels", "discord_read_messages", "discord_send_message"), m.tools.map { it.name }.toSet())
         assertTrue(m.tools.all { (it.action as HttpAction).url.startsWith("https://discord.com/api/v10/") })
+        assertTrue(m.tools.all { (it.action as HttpAction).permission == Permission.Http("discord.com", "/api/v10/") })
         assertTrue(m.settings.single().let { it.secret && it.required })
     }
 

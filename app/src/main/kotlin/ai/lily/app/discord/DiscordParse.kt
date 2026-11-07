@@ -75,6 +75,8 @@ internal object DiscordParse {
             attachments = files,
             embedCount = o.optJSONArray("embeds")?.length() ?: 0,
             type = o.optInt("type", 0),
+            authorAvatar = author?.let { field(it, "avatar") }?.takeIf { AvatarId.isValidHash(it) },
+            authorUsername = author?.let { label(field(it, "username"), "") }.orEmpty(),
         )
     }
 
