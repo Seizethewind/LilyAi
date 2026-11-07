@@ -19,7 +19,7 @@ internal object DiscordParse {
         for (i in 0 until array.length()) {
             val o = array.optJSONObject(i) ?: continue
             val guildId = snowflake(o, "id") ?: continue
-            out += DiscordGuild(guildId, label(text(o, "name"), "server $guildId"))
+            out += DiscordGuild(guildId, label(field(o, "name"), "server $guildId"))
         }
         return out.sortedBy { it.name.lowercase() }
     }
@@ -32,7 +32,7 @@ internal object DiscordParse {
             val channelId = snowflake(o, "id") ?: continue
             out += DiscordChannel(
                 id = channelId,
-                name = label(text(o, "name"), "channel-$channelId"),
+                name = label(field(o, "name"), "channel-$channelId"),
                 type = o.optInt("type", 0),
                 parentId = snowflake(o, "parent_id"),
                 position = o.optInt("position", 0),
@@ -55,13 +55,13 @@ internal object DiscordParse {
     fun message(o: JSONObject): DiscordMessage? {
         val messageId = snowflake(o, "id") ?: return null
         val author = o.optJSONObject("author")
-        val shownName = author?.let { text(it, "global_name")?.takeIf { name -> name.isNotBlank() } ?: text(it, "username") }
+        val shownName = author?.let { field(it, "global_name")?.takeIf { name -> name.isNotBlank() } ?: field(it, "username") }
         val files = ArrayList<String>()
         val attachments = o.optJSONArray("attachments")
         if (attachments != null) {
             for (i in 0 until attachments.length()) {
                 val a = attachments.optJSONObject(i) ?: continue
-                files += label(text(a, "filename"), "file")
+                files += label(field(a, "filename"), "file")
             }
         }
         return DiscordMessage(
@@ -69,9 +69,9 @@ internal object DiscordParse {
             authorId = author?.let { snowflake(it, "id") }.orEmpty(),
             authorName = label(shownName, "unknown"),
             authorIsBot = author?.optBoolean("bot", false) ?: false,
-            content = clean(text(o, "content").orEmpty(), MAX_CONTENT),
-            timestamp = text(o, "timestamp").orEmpty().take(40),
-            editedTimestamp = text(o, "edited_timestamp")?.take(40),
+            content = clean(field(o, "content").orEmpty(), MAX_CONTENT),
+            timestamp = field(o, "timestamp").orEmpty().take(40),
+            editedTimestamp = field(o, "edited_timestamp")?.take(40),
             attachments = files,
             embedCount = o.optJSONArray("embeds")?.length() ?: 0,
             type = o.optInt("type", 0),
@@ -80,7 +80,7 @@ internal object DiscordParse {
 
     /** The "message" Discord gives with an error, cleaned and short, or "". */
     fun errorText(body: String): String = try {
-        clean(text(JSONObject(body), "message").orEmpty(), MAX_ERROR).replace('\n', ' ').trim()
+        clean(field(JSONObject(body), "message").orEmpty(), MAX_ERROR).replace('\n', ' ').trim()
     } catch (e: Exception) {
         ""
     }
@@ -93,12 +93,12 @@ internal object DiscordParse {
     }
 
     /** A value that is absent or JSON null is null (the platform's and the JVM's JSON libraries disagree on what optString gives for null). */
-    private fun text(o: JSONObject, key: String): String? {
+    private fun field(o: JSONObject, key: String): String? {
         val v = o.opt(key)
         return if (v == null || v === JSONObject.NULL) null else (v as? String) ?: v.toString()
     }
 
-    private fun snowflake(o: JSONObject, key: String): String? = text(o, key)?.takeIf { Snowflake.isValid(it) }
+    private fun snowflake(o: JSONObject, key: String): String? = field(o, key)?.takeIf { Snowflake.isValid(it) }
 
     /** One short line for a name. */
     private fun label(raw: String?, fallback: String): String {
