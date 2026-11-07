@@ -15,13 +15,16 @@ import ai.lily.app.memory.TursoClient
 import ai.lily.app.memory.TursoJournal
 import ai.lily.app.memory.TursoProvenFacts
 import ai.lily.app.plugins.ConfirmationGate
+import ai.lily.app.plugins.DenyAllGate
 import ai.lily.app.plugins.PluginHost
 import ai.lily.app.sandbox.PandaStackClient
 import ai.lily.app.settings.AppSettings
+import ai.lily.app.tools.BrowserBridge
 import ai.lily.app.tools.EditorBridge
 import ai.lily.app.tools.SandboxTool
 import ai.lily.app.tools.ToolSystem
 import ai.lily.app.tools.WebSearchTool
+import ai.lily.app.workers.BrowserTestWorker
 import ai.lily.app.workers.BuildWorker
 import ai.lily.app.workers.CodingWorker
 import ai.lily.app.workers.FileWorker
@@ -49,6 +52,8 @@ object LilyFactory {
      * [gitRepo] is the repo folder in Termux that the git worker uses when a task names none (the one set in the Git dialog).
      * [agentInstructions] reads the workspace's AGENT.md files. What they say for a role is added to that worker's calls, and what
      * they say for Lily to the planner's, after Lily's own rules. Without it nothing is added.
+     * [browser] is how testers read the page in the Browse section (what it logged, an accessibility and layout audit). Without it testers
+     * only answer. [browserGate] asks the person before a tester opens a page; the default denies, so nothing is opened without a screen to ask on.
      * Workers the person created (settings.workers) take over their role from the built-in worker, each with its own router,
      * model and instructions. A role with no created workers keeps the built-in one.
      * Lily's own rules (settings.lily) are added to every worker's calls and to the planner's, after the caller's own system text.
@@ -63,6 +68,8 @@ object LilyFactory {
         teamGate: ConfirmationGate? = null,
         gitRepo: () -> String = { "" },
         agentInstructions: AgentInstructions? = null,
+        browser: BrowserBridge? = null,
+        browserGate: ConfirmationGate = DenyAllGate,
     ): Lily {
         val gateway = RouterModelGateway(settings.router)
         val second: ModelGateway? = settings.router2?.let { RouterModelGateway(it) }
@@ -90,7 +97,8 @@ object LilyFactory {
             WorkerType.GIT -> GitWorker(g, tools, gitRepo)
             WorkerType.FILE -> FileWorker(g, tools, editor)
             WorkerType.GENERAL -> GeneralWorker(g, tools)
-            WorkerType.TEST -> ModelWorker(WorkerType.TEST, g, tools)
+            // With a browser a tester can check a web page; a task that names no page it answers like any other tester.
+            WorkerType.TEST -> if (browser != null) BrowserTestWorker(g, tools, browser, browserGate) else ModelWorker(WorkerType.TEST, g, tools)
             WorkerType.TEAM -> ManagerWorker(g, tools, checkNotNull(roster) { "The TEAM worker needs a roster" }, teamGate)
         }
 
@@ -101,8 +109,8 @@ object LilyFactory {
                 if (type == WorkerType.TEAM && roster == null) continue
                 val profiles = created[type].orEmpty()
                 if (profiles.isEmpty()) {
-                    // Testers exist only when the person makes them; every other role always has a built-in worker.
-                    if (type != WorkerType.TEST) register(worker(type, withLilysRules(gateway, type)))
+                    // Every role has a built-in worker, except testers: without a browser to check pages in, they exist only when the person makes them.
+                    if (type != WorkerType.TEST || browser != null) register(worker(type, withLilysRules(gateway, type)))
                 } else {
                     for (p in profiles) {
                         val router = if (p.router == 1 && second != null) second else gateway
