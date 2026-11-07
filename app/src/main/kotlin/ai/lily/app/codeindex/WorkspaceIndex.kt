@@ -12,6 +12,7 @@ data class RelatedFile(val path: String, val score: Double, val lines: IntRange)
  * is used as it was, and if it is empty the answer is empty: this is a helper, and it must never stop an edit.
  */
 class WorkspaceIndex(private val files: CodeFiles, val index: CodeIndex = CodeIndex()) {
+    private val map = ProjectMap(files)
 
     /**
      * Up to [maxFiles] files for [request], best first, never one of [exclude] (the files already shown). A file scores its best
@@ -42,6 +43,19 @@ class WorkspaceIndex(private val files: CodeFiles, val index: CodeIndex = CodeIn
         val top = ranked.firstOrNull()?.score ?: return emptyList()
         return ranked.filter { it.score >= top * FLOOR }.take(maxFiles.coerceAtLeast(0))
     }
+
+    /**
+     * The project outline (see [ProjectMap]): what each source file declares, skipping the files in [exclude], at most [maxChars].
+     * Empty when the project cannot be listed or declares nothing: like [relatedTo], this is a helper and must never stop an edit.
+     */
+    suspend fun outline(maxChars: Int = ProjectMap.DEFAULT_MAX_CHARS, exclude: Set<String> = emptySet()): String =
+        try {
+            map.outline(maxChars, exclude)
+        } catch (e: CancellationException) {
+            throw e
+        } catch (e: Exception) {
+            ""
+        }
 
     companion object {
         const val DEFAULT_MAX_FILES = 4

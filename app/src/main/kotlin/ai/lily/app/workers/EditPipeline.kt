@@ -24,7 +24,8 @@ import ai.lily.app.tools.ProposedEdit
  *
  * With a [related] index it also shows a few other files of the project that the request seems to be about (see
  * [WorkspaceIndex.relatedTo]), so a change can reach beyond the open tabs. Only small files are added, up to four, and the reply
- * says which ones were read.
+ * says which ones were read. The first request also carries a short project outline (see [WorkspaceIndex.outline]): what the
+ * files not shown in full declare, so the model knows where things live. The outline is orientation only and is not part of the reply.
  */
 class EditPipeline(
     private val gateway: ModelGateway,
@@ -51,11 +52,12 @@ class EditPipeline(
                 alsoRead += r.path
             }
         }
+        val outline = related?.outline(MAP_CHARS, exclude = texts.keys.toSet()).orEmpty()
         val activePath = open.firstOrNull { it.active }?.path
         val system = EDIT_SYSTEM_PROMPT + extraSystem
         val shown = texts.map { (p, t) -> PromptFile(p, t, active = p == activePath) }
 
-        val first = gateway.complete(ModelRequest(buildEditPrompt(task.description, shown, listing), system, model))
+        val first = gateway.complete(ModelRequest(buildEditPrompt(task.description, shown, listing) + outlineSection(outline), system, model))
         val parsed = parseReply(first.text)
         if (parsed.edits.isEmpty()) return TaskResult(task.id, first.text.trim(), true)
 
@@ -144,9 +146,18 @@ class EditPipeline(
         description.contains(path, ignoreCase = true) ||
             description.contains(path.substringAfterLast('/'), ignoreCase = true)
 
+    /** The outline as a block at the end of the first request, or nothing when there is no outline. */
+    private fun outlineSection(outline: String): String =
+        if (outline.isBlank()) {
+            ""
+        } else {
+            "\nProject outline (what other files declare, for orientation; only the files shown above have their text here):\n$outline\n"
+        }
+
     private companion object {
         const val EXTRA_FILES = 4
         const val MAX_EXTRA_FILE_CHARS = 8_000
         const val MAX_EXTRA_TOTAL_CHARS = 20_000
+        const val MAP_CHARS = 6_000
     }
 }
