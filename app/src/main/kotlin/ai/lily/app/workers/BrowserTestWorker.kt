@@ -84,7 +84,9 @@ internal object BrowserSight {
         val text = reply.trim()
         val first = text.lineSequence().first()
         if (!first.contains(code, ignoreCase = true)) return null
-        val rest = text.substringAfter('\n', "").trim().ifBlank { first.replace(code, "", ignoreCase = true).trim(' ', ':', '-', '.', ',') }
+        // The review may share the code's line: then it is what is left of that line once the code is taken out.
+        val rest = text.substringAfter('\n', "").trim()
+            .ifBlank { first.replace(code, "", ignoreCase = true).trimStart(' ', ':', '-', '.', ',').trim() }
         return rest.ifBlank { null }
     }
 }
