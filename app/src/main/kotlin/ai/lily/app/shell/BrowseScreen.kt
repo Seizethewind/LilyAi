@@ -76,11 +76,32 @@ class BrowseState(context: Context) {
     /** Console messages, failed requests and load time of the current page, for Lily's site checks. */
     val log = PageLog()
 
+    /**
+     * While set, the page cannot move to any other host: a main page move to another host is stopped and counted in [blockedMoves].
+     * Set while Lily uses a page, so a click cannot take her somewhere the person did not approve.
+     */
+    @Volatile
+    var lockedHost: String? = null
+
+    @Volatile
+    var blockedMoves = 0
+        private set
+
     val web: WebView = WebView(context).apply {
         settings.javaScriptEnabled = true
         settings.allowFileAccess = false
         settings.allowContentAccess = false
         webViewClient = object : WebViewClient() {
+            override fun shouldOverrideUrlLoading(view: WebView?, request: WebResourceRequest?): Boolean {
+                val locked = lockedHost ?: return false
+                if (request?.isForMainFrame == true && !locked.equals(request.url.host, ignoreCase = true)) {
+                    blockedMoves++
+                    log.add(PageLog.Kind.Error, "blocked a move to ${request.url.host ?: request.url.scheme}")
+                    return true
+                }
+                return false
+            }
+
             override fun onPageStarted(view: WebView?, url: String?, favicon: Bitmap?) {
                 loading = true
                 failed = false
