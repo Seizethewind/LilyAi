@@ -104,7 +104,7 @@ Under active development. CI builds the app and runs the unit tests. Not everyth
 
 ## Docs
 
-[ARCHITECTURE.md](ARCHITECTURE.md) · [docs/plugins.md](docs/plugins.md) · [docs/agent-editor.md](docs/agent-editor.md) · [docs/code-editor.md](docs/code-editor.md) · [docs/router.md](docs/router.md) · [docs/memory.md](docs/memory.md) · [docs/pandastack.md](docs/pandastack.md) · [docs/sandbox-verify.md](docs/sandbox-verify.md) · [docs/workspace-index.md](docs/workspace-index.md) · [docs/research-mode.md](docs/research-mode.md) · [docs/remote-workspaces.md](docs/remote-workspaces.md) · [docs/knowledge-ask.md](docs/knowledge-ask.md)
+[ARCHITECTURE.md](ARCHITECTURE.md) · [docs/plugins.md](docs/plugins.md) · [docs/agent-editor.md](docs/agent-editor.md) · [docs/code-editor.md](docs/code-editor.md) · [docs/router.md](docs/router.md) · [docs/memory.md](docs/memory.md) · [docs/pandastack.md](docs/pandastack.md) · [docs/sandbox-verify.md](docs/sandbox-verify.md) · [docs/workspace-index.md](docs/workspace-index.md) · [docs/research-mode.md](docs/research-mode.md) · [docs/remote-workspaces.md](docs/remote-workspaces.md) · [docs/knowledge-ask.md](docs/knowledge-ask.md) · [docs/terminal.md](docs/terminal.md)
 
 ## License
 

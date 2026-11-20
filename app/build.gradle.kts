@@ -51,6 +51,13 @@ android {
     buildFeatures {
         compose = true
     }
+    packaging {
+        jniLibs {
+            // The terminal runs proot from the native library folder (apps may not run programs they unpack themselves).
+            // Android only leaves real files there when libraries are extracted at install, so this must stay on.
+            useLegacyPackaging = true
+        }
+    }
 }
 
 dependencies {
