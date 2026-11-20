@@ -19,14 +19,20 @@ env:
   NDK_VERSION: 23.2.8568313
   # SHA-256 of the two source tarballs the build downloads. Empty means "not pinned yet": the build prints the value
   # and warns. Once filled in, any other file fails the build.
-  PROOT_TARBALL_SHA256: ''
-  TALLOC_TARBALL_SHA256: ''
+  # First recorded from the upstream download by the run of 2026-11-21 (trusted on first use); see PROOT_SOURCE.md.
+  PROOT_TARBALL_SHA256: 'd678603aa80aea84969d2897d2a4f98acc8f6008defca960e40ce4ad4e8e893e'
+  TALLOC_TARBALL_SHA256: 'b185602756a628bac507fa8af8b9df92ace69d27c0add5dab93190ad7c3367ce'
 
 jobs:
   proot:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
+
+      # talloc 2.1.14 ships an old waf that imports Python's 'imp' module, which Python 3.12 removed.
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
 
       - name: Fetch the build scripts at the pinned commit
         run: |
