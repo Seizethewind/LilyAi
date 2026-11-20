@@ -18,3 +18,10 @@ jobs:
         with:
           gradle-version: 8.10.2
       - run: gradle assembleDebug testDebugUnitTest
+      # Keeps the debug APK so a pull request's build can be installed on a phone (needed to test the terminal spike).
+      - uses: actions/upload-artifact@v4
+        with:
+          name: lilyai-debug-apk
+          path: app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
+          retention-days: 14
