@@ -74,6 +74,18 @@ jobs:
           fetch talloc "https://download.samba.org/pub/talloc/talloc-$TALLOC_V.tar.gz" "$TALLOC_TARBALL_SHA256"
           ls "$BUILD_DIR"
 
+      - name: Diagnose waf (temporary)
+        working-directory: bpa
+        run: |
+          . ./config
+          cd "$BUILD_DIR/talloc-$TALLOC_V"
+          python3 --version; which python python3 || true
+          echo "--- buildtools/bin/waf (head)"; sed -n 1,100p buildtools/bin/waf
+          echo "--- python-version handling in wafadmin"
+          grep -rn "hexversion\|py3kfixes\|2to3" third_party/waf/wafadmin/*.py buildtools/bin/waf | head -30
+          ls third_party/waf/wafadmin | head -40
+        continue-on-error: true
+
       - name: Build talloc and proot for the app
         working-directory: bpa
         run: |
