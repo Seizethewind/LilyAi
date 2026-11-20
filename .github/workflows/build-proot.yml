@@ -25,14 +25,18 @@ env:
 
 jobs:
   proot:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-22.04
     steps:
       - uses: actions/checkout@v4
 
-      # talloc 2.1.14 ships an old waf that imports Python's 'imp' module, which Python 3.12 removed.
-      - uses: actions/setup-python@v5
-        with:
-          python-version: '3.11'
+      # talloc 2.1.14 bundles waf 1.5, which only runs on Python 2 (Python 3 fails on its syntax). Ubuntu 22.04 still
+      # packages Python 2; 24.04 does not, so this job stays on 22.04. waf starts with '#!/usr/bin/env python'.
+      - name: Install Python 2 for talloc's waf
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python2
+          sudo ln -sf /usr/bin/python2 /usr/local/bin/python
+          python --version
 
       - name: Fetch the build scripts at the pinned commit
         run: |
@@ -73,18 +77,6 @@ jobs:
           fetch proot "https://github.com/green-green-avk/proot/archive/v$PROOT_V.tar.gz" "$PROOT_TARBALL_SHA256"
           fetch talloc "https://download.samba.org/pub/talloc/talloc-$TALLOC_V.tar.gz" "$TALLOC_TARBALL_SHA256"
           ls "$BUILD_DIR"
-
-      - name: Diagnose waf (temporary)
-        working-directory: bpa
-        run: |
-          . ./config
-          cd "$BUILD_DIR/talloc-$TALLOC_V"
-          python3 --version; which python python3 || true
-          echo "--- buildtools/bin/waf (head)"; sed -n 1,100p buildtools/bin/waf
-          echo "--- python-version handling in wafadmin"
-          grep -rn "hexversion\|py3kfixes\|2to3" third_party/waf/wafadmin/*.py buildtools/bin/waf | head -30
-          ls third_party/waf/wafadmin | head -40
-        continue-on-error: true
 
       - name: Build talloc and proot for the app
         working-directory: bpa
