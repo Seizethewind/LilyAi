@@ -5,6 +5,7 @@ import ai.lily.app.ui.CountBadge
 import ai.lily.app.ui.Hairline
 import ai.lily.app.ui.LilyMark
 import ai.lily.app.ui.LilyUi
+import ai.lily.app.ui.TerminalGlyph
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.background
@@ -53,6 +54,7 @@ enum class Section(val label: String, val icon: ImageVector) {
     Work("Work", Icons.Filled.Edit),
     Chat("Chat", ChatGlyph),
     Browse("Browse", Icons.Filled.Search),
+    Terminal("Terminal", TerminalGlyph),
     Plugins("Plugins", Icons.Filled.Build),
     Ai("AI", Icons.Filled.Star),
     Settings("Settings", Icons.Filled.Settings),

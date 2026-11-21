@@ -18,6 +18,7 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.PathFillType
 import androidx.compose.ui.graphics.drawscope.DrawScope
 import androidx.compose.ui.graphics.drawscope.withTransform
 import androidx.compose.ui.graphics.vector.ImageVector
@@ -117,6 +118,42 @@ val ChatGlyph: ImageVector = materialIcon(name = "LilyChat") {
         curveToRelative(1.1f, 0f, 2f, -0.9f, 2f, -2f)
         verticalLineTo(4f)
         curveToRelative(0f, -1.1f, -0.9f, -2f, -2f, -2f)
+        close()
+    }
+}
+
+/** A window with a prompt (">_") for the Terminal section: a frame with the window cut out, the prompt filled back in. */
+val TerminalGlyph: ImageVector = materialIcon(name = "LilyTerminal") {
+    materialPath(pathFillType = PathFillType.EvenOdd) {
+        // The frame.
+        moveTo(4f, 4f)
+        horizontalLineToRelative(16f)
+        arcToRelative(2f, 2f, 0f, false, true, 2f, 2f)
+        verticalLineToRelative(12f)
+        arcToRelative(2f, 2f, 0f, false, true, -2f, 2f)
+        horizontalLineTo(4f)
+        arcToRelative(2f, 2f, 0f, false, true, -2f, -2f)
+        verticalLineTo(6f)
+        arcToRelative(2f, 2f, 0f, false, true, 2f, -2f)
+        close()
+        // The window, cut out.
+        moveTo(4f, 8f)
+        horizontalLineToRelative(16f)
+        verticalLineToRelative(10f)
+        horizontalLineTo(4f)
+        close()
+        // The ">" and the "_", filled back in.
+        moveTo(7.5f, 17f)
+        lineToRelative(-1.41f, -1.41f)
+        lineTo(8.67f, 13f)
+        lineToRelative(-2.59f, -2.59f)
+        lineTo(7.5f, 9f)
+        lineToRelative(4f, 4f)
+        close()
+        moveTo(18f, 17f)
+        horizontalLineToRelative(-6f)
+        verticalLineToRelative(-2f)
+        horizontalLineToRelative(6f)
         close()
     }
 }

@@ -5,6 +5,8 @@
     <!-- Keeps queued tasks running while the app is not on screen (shell/TaskService). POST_NOTIFICATIONS lets its notification show on Android 13+. -->
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
     <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+    <!-- Keeps terminal shells running while the app is not on screen (terminal/TerminalService). -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_SPECIAL_USE" />
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
     <!-- Lets the person choose a shared workspace folder (Settings, Workspace folder) that Termux and a file manager can also see.
          Without it, or until the person allows it, the app's private workspace is used. -->
@@ -51,6 +53,14 @@
             android:name=".shell.TaskService"
             android:exported="false"
             android:foregroundServiceType="dataSync" />
+        <service
+            android:name=".terminal.TerminalService"
+            android:exported="false"
+            android:foregroundServiceType="specialUse">
+            <property
+                android:name="android.app.PROPERTY_SPECIAL_USE_FGS_SUBTYPE"
+                android:value="Keeps the in-app terminal's shell sessions running while the app is in the background" />
+        </service>
         <!-- Receives the answer a plugin's target app sends back. Not exported: only Lily's own PendingIntent reaches it. -->
         <receiver
             android:name=".plugins.PluginResultReceiver"

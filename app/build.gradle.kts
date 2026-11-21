@@ -51,6 +51,13 @@ android {
     buildFeatures {
         compose = true
     }
+    packaging {
+        jniLibs {
+            // The terminal runs proot from the native library folder (apps may not run programs they unpack themselves).
+            // Android only leaves real files there when libraries are extracted at install, so this must stay on.
+            useLegacyPackaging = true
+        }
+    }
 }
 
 dependencies {
@@ -70,6 +77,9 @@ dependencies {
     // Remote workspaces. SFTP: the maintained JSch fork (modern algorithms, weak ones off by default). FTPS/FTP: Apache Commons Net.
     implementation("com.github.mwiede:jsch:0.2.20")
     implementation("commons-net:commons-net:3.11.1")
+    // The terminal screen and the pseudo-terminal that runs the shell (Termux's libraries; see docs/terminal.md for the licence note).
+    implementation("com.github.termux.termux-app:terminal-view:v0.118.0")
+    implementation("com.github.termux.termux-app:terminal-emulator:v0.118.0")
 
     testImplementation(libs.junit)
     // Android's org.json is only a stub in unit tests; this real one lets the Turso request/response JSON be tested.

@@ -11,3 +11,8 @@
 # Tink (via androidx.security.crypto) references annotation-only classes that are not shipped.
 -dontwarn javax.annotation.**
 -dontwarn javax.annotation.concurrent.**
+
+# In-app terminal (Termux's terminal-view / terminal-emulator). Its native code finds the Java classes and fields by name,
+# so release builds must not rename or remove them.
+-keep class com.termux.** { *; }
+-keepclasseswithmembernames class * { native <methods>; }

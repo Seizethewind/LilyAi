@@ -1,0 +1,150 @@
+name: Build proot
+
+# Builds the proot binaries the in-app terminal runs through (see docs/terminal.md) and, on a branch, commits them to
+# app/src/main/jniLibs with a provenance file. Runs when this file changes on a branch, or by hand (Actions, Run workflow).
+# It does not run on pull requests or on every push, so ordinary builds stay fast.
+
+on:
+  workflow_dispatch:
+  push:
+    paths: ['.github/workflows/build-proot.yml']
+
+permissions:
+  contents: write
+
+env:
+  # The build scripts, pinned to one commit (green-green-avk/build-proot-android, MIT). Change it only after reading the diff.
+  BPA_COMMIT: 01f83b8841358450c78333d1b33ab30d4943bec4
+  # The NDK the scripts were written for. Newer ones drop API levels the scripts still use.
+  NDK_VERSION: 23.2.8568313
+  # SHA-256 of the two source tarballs the build downloads. Empty means "not pinned yet": the build prints the value
+  # and warns. Once filled in, any other file fails the build.
+  # First recorded from the upstream download by the run of 2026-11-21 (trusted on first use); see PROOT_SOURCE.md.
+  PROOT_TARBALL_SHA256: 'd678603aa80aea84969d2897d2a4f98acc8f6008defca960e40ce4ad4e8e893e'
+  TALLOC_TARBALL_SHA256: 'b185602756a628bac507fa8af8b9df92ace69d27c0add5dab93190ad7c3367ce'
+
+jobs:
+  proot:
+    runs-on: ubuntu-22.04
+    steps:
+      - uses: actions/checkout@v4
+
+      # talloc 2.1.14 bundles waf 1.5, which only runs on Python 2 (Python 3 fails on its syntax). Ubuntu 22.04 still
+      # packages Python 2; 24.04 does not, so this job stays on 22.04. waf starts with '#!/usr/bin/env python'.
+      - name: Install Python 2 for talloc's waf
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq python2
+          sudo ln -sf /usr/bin/python2 /usr/local/bin/python
+          python --version
+
+      - name: Fetch the build scripts at the pinned commit
+        run: |
+          git clone --quiet https://github.com/green-green-avk/build-proot-android bpa
+          git -C bpa checkout --quiet "$BPA_COMMIT"
+          test "$(git -C bpa rev-parse HEAD)" = "$BPA_COMMIT"
+
+      - name: Install the NDK
+        run: |
+          yes | "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --licenses > /dev/null || true
+          "$ANDROID_HOME/cmdline-tools/latest/bin/sdkmanager" --install "ndk;$NDK_VERSION" > /dev/null
+          ls "$ANDROID_HOME/ndk"
+
+      - name: Point the scripts at this runner and the CPUs the app ships
+        working-directory: bpa
+        run: |
+          sed -i "s|^NDK=.*|NDK=\"$ANDROID_HOME/ndk/$NDK_VERSION\"|" config
+          # The 'pre5' builds (Android 4) and 32-bit x86 are not needed; the app's minimum is Android 8.
+          sed -i "s|^ARCHS=.*|ARCHS='aarch64 armv7a x86_64'|" config
+          grep -E '^(NDK|ARCHS|PROOT_V|TALLOC_V)=' config
+
+      - name: Download the sources and check their checksums
+        working-directory: bpa
+        run: |
+          . ./config
+          fetch() {
+            name="$1"; url="$2"; expected="$3"
+            curl -fsSL --retry 3 -o "/tmp/$name.tar.gz" "$url"
+            got="$(sha256sum "/tmp/$name.tar.gz" | cut -d' ' -f1)"
+            echo "$name $url $got" | tee -a "$GITHUB_WORKSPACE/source-hashes.txt"
+            if [ -n "$expected" ] && [ "$expected" != "$got" ]; then
+              echo "::error::$name does not match its pinned checksum ($expected)"; exit 1
+            fi
+            [ -n "$expected" ] || echo "::warning::$name checksum is not pinned yet: $got"
+            # The scripts skip their own download when this folder already exists.
+            tar -xzf "/tmp/$name.tar.gz" -C "$BUILD_DIR"
+          }
+          fetch proot "https://github.com/green-green-avk/proot/archive/v$PROOT_V.tar.gz" "$PROOT_TARBALL_SHA256"
+          fetch talloc "https://download.samba.org/pub/talloc/talloc-$TALLOC_V.tar.gz" "$TALLOC_TARBALL_SHA256"
+          ls "$BUILD_DIR"
+
+      - name: Build talloc and proot for the app
+        working-directory: bpa
+        run: |
+          ./make-talloc-static.sh
+          ./make-proot-for-apk.sh
+
+      - name: Collect and check the binaries
+        run: |
+          set -e
+          mkdir -p out/jniLibs
+          for pair in aarch64:arm64-v8a armv7a:armeabi-v7a x86_64:x86_64; do
+            arch="${pair%%:*}"; abi="${pair##*:}"
+            src="bpa/build/root-$arch/root-apk/bin"
+            echo "== $arch -> $abi"; ls -la "$src"
+            mkdir -p "out/jniLibs/$abi"
+            cp "$src"/lib*.so "out/jniLibs/$abi/"
+            for need in libproot.so libproot-loader.so; do
+              test -f "out/jniLibs/$abi/$need" || { echo "::error::$need missing for $abi"; exit 1; }
+            done
+            file "out/jniLibs/$abi/libproot.so"
+            # proot must carry talloc inside it; a dependency on libtalloc would fail at start on a phone.
+            readelf -d "out/jniLibs/$abi/libproot.so" | grep NEEDED || true
+            if readelf -d "out/jniLibs/$abi/libproot.so" | grep -q talloc; then
+              echo "::error::libproot.so for $abi still depends on libtalloc"; exit 1
+            fi
+          done
+
+      - name: Write the provenance file
+        run: |
+          . bpa/config > /dev/null
+          {
+            echo "# proot binaries"
+            echo
+            echo "Built by .github/workflows/build-proot.yml (run $GITHUB_RUN_ID, commit $GITHUB_SHA). Do not edit by hand."
+            echo
+            echo "- Build scripts: https://github.com/green-green-avk/build-proot-android at $BPA_COMMIT (MIT)"
+            echo "- proot $PROOT_V from https://github.com/green-green-avk/proot (GPL-2.0-or-later)"
+            echo "- talloc $TALLOC_V from https://download.samba.org/pub/talloc/ (LGPL-3.0-or-later), linked statically into proot"
+            echo "- NDK $NDK_VERSION"
+            echo
+            echo "Source tarballs (sha256):"
+            echo
+            sed 's/^/    /' source-hashes.txt
+            echo
+            echo "Binaries (sha256):"
+            echo
+            (cd out/jniLibs && find . -name '*.so' | sort | xargs sha256sum | sed 's/^/    /')
+          } > out/PROOT_SOURCE.md
+          cat out/PROOT_SOURCE.md
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: proot-jnilibs
+          path: out/
+          retention-days: 30
+
+      - name: Commit the binaries to this branch
+        # Not on main: a protected branch would refuse, and binaries should arrive through a reviewed pull request.
+        if: github.ref != 'refs/heads/main'
+        run: |
+          rm -rf app/src/main/jniLibs/arm64-v8a app/src/main/jniLibs/armeabi-v7a app/src/main/jniLibs/x86_64
+          mkdir -p app/src/main/jniLibs
+          cp -r out/jniLibs/* app/src/main/jniLibs/
+          cp out/PROOT_SOURCE.md app/src/main/jniLibs/PROOT_SOURCE.md
+          git config user.name "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add app/src/main/jniLibs
+          if git diff --cached --quiet; then echo "No change."; exit 0; fi
+          git commit -m "Add proot binaries built by CI" -m "See app/src/main/jniLibs/PROOT_SOURCE.md for sources and checksums."
+          git push
