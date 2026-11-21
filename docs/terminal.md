@@ -2,7 +2,15 @@
 
 Goal: a real Linux shell inside the app (bash or sh, git, python, node, a package manager). You can type in it, and later Lily's workers can run commands in it, with your approval each time.
 
-**Status: Phase 0 (spike) and Phase 1 (environment manager) are written, and proot is built by CI and committed. Phase 0 has not been run on a phone yet.** The environment manager's unit tests pass; the spike screen could not be compiled or run where it was written, so the first on-device run is the real test. Everything below says which parts are proven and which are not.
+**Status: Phases 0, 1 and 2 are written: the environment manager, proot (built by CI), and a Terminal section in the app (tabs, extra keys, setup pane). All of it compiles in CI and the unit tests pass; none of it has been run on a phone yet.** Everything below says which parts are proven and which are not.
+
+## Using it (Phase 2)
+
+Open the **Terminal** tab. The first time it shows a setup pane: **Download Linux files** fetches Alpine Linux (a few MB), checks it and unpacks it. Then a shell opens on its own. Tabs along the top (`+` for a new one, `⋮` for paste, close, safe mode and removing the Linux files); an extra-keys row along the bottom (Esc, Tab, sticky Ctrl and Alt, arrows, common symbols, paste). Inside, `apk add git python3 nodejs` installs tools.
+
+**Safe mode** (`⋮` menu) turns off proot's seccomp speed-up. Use it if the shell hangs or prints errors at start; it is slower. Turning it on closes the open tabs.
+
+Not done yet: sessions end when the app process is stopped (Phase 3 keeps them alive in a foreground service); Lily's workers cannot run commands in it (Phase 4); the project folder is not mounted into the shell (Phase 4); there is no terminal colour or font setting.
 
 ## How it works
 
@@ -24,6 +32,8 @@ The cost: proot is slower than native code. Heavy work (big builds) can feel it.
 | `terminal/env/EnvManager.kt` | Download, check, unpack into a staging folder, swap into place, write `env.json` last. Repair, reset, disk use | yes |
 | `terminal/proot/ProotLauncher.kt` | Builds the proot command line and a clean environment; `GuestSetup` writes `resolv.conf` and `hosts` | yes |
 | `src/debug/.../ProotSpikeActivity.kt` | Phase 0 test screen (debug builds only) | **no** |
+| `terminal/ui/TerminalHost.kt` | Environment state, open tabs, sticky Ctrl/Alt, the clients Termux's view and session need | compile-checked only |
+| `terminal/ui/TerminalScreen.kt` | The Terminal section: setup pane, tabs, terminal view, extra keys | compile-checked only |
 | `utils/stage-proot.sh` | Copies a proot build from elsewhere into `jniLibs` under the right names (optional now) | syntax only |
 | `.github/workflows/build-proot.yml` | Builds proot and commits it to `jniLibs` | ran once, succeeded |
 
@@ -101,3 +111,9 @@ Deleting uses a walker that never follows links, because an unpacked root file s
 4. Agent bridge: an in-app shell tool replacing the external Termux plugin's service call. The approval dialog stays.
 5. Run project checks and git locally.
 6. Remove the external Termux plugin's manifest entries and update the other docs.
+
+## Termux's terminal libraries
+
+The screen uses `terminal-view` and `terminal-emulator` (version `v0.118.0`) from [termux/termux-app](https://github.com/termux/termux-app), fetched from JitPack. `settings.gradle.kts` allows JitPack for that one group only. They draw the terminal and open the pseudo-terminal that proot runs in (`libtermux.so`, in the library). Release builds keep their classes (`app/proguard-rules.pro`), because the native code finds them by name; **that rule is untested, since CI only builds the debug APK.**
+
+**Licence: not verified.** The Termux app is GPLv3, and I could not read the licence file for these two libraries from here. I believe they are Apache-2.0, but check `LICENSE.md` in the Termux repository before you publish a release.
