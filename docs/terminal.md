@@ -2,7 +2,7 @@
 
 Goal: a real Linux shell inside the app (bash or sh, git, python, node, a package manager). You can type in it, and later Lily's workers can run commands in it, with your approval each time.
 
-**Status: Phase 0 (spike) and Phase 1 (environment manager) are written. Phase 0 has not been run on a phone yet.** The environment manager's unit tests pass; the spike screen could not be compiled or run where it was written, so the first on-device run is the real test. Everything below says which parts are proven and which are not.
+**Status: Phase 0 (spike) and Phase 1 (environment manager) are written, and proot is built by CI and committed. Phase 0 has not been run on a phone yet.** The environment manager's unit tests pass; the spike screen could not be compiled or run where it was written, so the first on-device run is the real test. Everything below says which parts are proven and which are not.
 
 ## How it works
 
@@ -24,19 +24,18 @@ The cost: proot is slower than native code. Heavy work (big builds) can feel it.
 | `terminal/env/EnvManager.kt` | Download, check, unpack into a staging folder, swap into place, write `env.json` last. Repair, reset, disk use | yes |
 | `terminal/proot/ProotLauncher.kt` | Builds the proot command line and a clean environment; `GuestSetup` writes `resolv.conf` and `hosts` | yes |
 | `src/debug/.../ProotSpikeActivity.kt` | Phase 0 test screen (debug builds only) | **no** |
-| `utils/stage-proot.sh` | Copies a proot build into `jniLibs` under the right names | syntax only |
+| `utils/stage-proot.sh` | Copies a proot build from elsewhere into `jniLibs` under the right names (optional now) | syntax only |
+| `.github/workflows/build-proot.yml` | Builds proot and commits it to `jniLibs` | ran once, succeeded |
 
 ## Phase 0: run the spike on a phone
 
-You need three things the repository does not contain.
+You need two things from outside the repository (a root file system archive, and a debug APK).
 
-**1. proot binaries** (one per CPU you test, normally `arm64-v8a`). The build at [green-green-avk/build-proot-android](https://github.com/green-green-avk/build-proot-android) is MIT licensed and described as statically linked with libtalloc, with an unbundled loader, built to be relocatable. Prebuilt files are in its `packages` folder, or build with its `build.sh`. Check the CPU you need is there before relying on it. Then:
+**1. proot binaries: already in the repository.** `.github/workflows/build-proot.yml` builds proot 0.15 (with talloc linked in) for `arm64-v8a`, `armeabi-v7a` and `x86_64`, and commits the result to `app/src/main/jniLibs/` together with `PROOT_SOURCE.md` (sources, versions and checksums of every file). It runs by hand (Actions, Build proot, Run workflow) or when that workflow file changes. It builds the scripts from [green-green-avk/build-proot-android](https://github.com/green-green-avk/build-proot-android), pinned to one commit, and the two source tarballs are pinned by SHA-256 (first recorded from the upstream download, so trusted on first use).
 
-```
-utils/stage-proot.sh arm64-v8a <path-to>/proot <path-to>/loader
-```
+What is checked: the files exist, are Android executables for the right CPU, and `libproot.so` depends only on `libc` and `libdl` (talloc is inside it). What is **not** checked: that proot actually runs on a device, which is what this spike is for. `utils/stage-proot.sh` is only needed if you want to use a proot build from somewhere else.
 
-Decide whether to commit these files to git or keep them out and fetch them in CI. Nothing here decides that for you.
+**Licence:** proot is GPL-2.0-or-later and talloc is LGPL-3.0-or-later; the repository itself is MIT. Shipping those binaries in the APK carries obligations (at least offering the corresponding source; `PROOT_SOURCE.md` names it). Read them before you publish a release.
 
 **2. A root file system archive.** From alpinelinux.org, Downloads, "Mini root filesystem" for your CPU (`aarch64` for most phones). Take the SHA-256 from the `.sha256` file next to it and the size in bytes from the file.
 
