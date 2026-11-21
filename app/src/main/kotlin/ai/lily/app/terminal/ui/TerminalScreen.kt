@@ -33,6 +33,7 @@ import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
 import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.collectAsState
 import androidx.compose.runtime.getValue
@@ -126,6 +127,8 @@ private fun SetupPane(host: TerminalHost, state: EnvState) {
 private fun ColumnScope.ShellPane(host: TerminalHost) {
     var menu by remember { mutableStateOf(false) }
     val c = LilyUi.colors
+    // The host outlives this screen; do not leave it holding a view that is going away.
+    DisposableEffect(Unit) { onDispose { host.view = null } }
 
     Row(
         Modifier.fillMaxWidth().background(c.raised).padding(horizontal = 6.dp),

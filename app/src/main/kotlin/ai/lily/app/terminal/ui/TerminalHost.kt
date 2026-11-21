@@ -7,6 +7,7 @@ import ai.lily.app.terminal.env.EnvLayout
 import ai.lily.app.terminal.env.EnvManager
 import ai.lily.app.terminal.env.EnvState
 import ai.lily.app.terminal.env.HttpEnvDownloader
+import ai.lily.app.terminal.TerminalService
 import ai.lily.app.terminal.proot.GuestSetup
 import ai.lily.app.terminal.proot.ProotLauncher
 import ai.lily.app.terminal.proot.ProotPaths
@@ -29,7 +30,9 @@ import com.termux.view.TerminalView
 import com.termux.view.TerminalViewClient
 import kotlinx.coroutines.CancellationException
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.launch
 import java.io.File
 
@@ -41,10 +44,13 @@ class TerminalTab(val id: Int, val session: TerminalSession) {
 
 /**
  * Everything the Terminal section needs: the Linux environment (download, state), the open sessions, and the sticky
- * Ctrl and Alt buttons. Lives as long as the activity; sessions are lost when the app process ends (keeping them alive
- * in the background is a later phase, see docs/terminal.md).
+ * Ctrl and Alt buttons. One per process ([get]), so closing the screen or the activity does not end a shell; while a shell
+ * runs, [ai.lily.app.terminal.TerminalService] keeps the process alive. Sessions still end if Android stops the app.
  */
-class TerminalHost(private val context: Context, private val scope: CoroutineScope) {
+class TerminalHost private constructor(private val context: Context) {
+    /** Lives as long as the process, so a download or a shell carries on when the screen is closed. */
+    private val scope = CoroutineScope(SupervisorJob() + Dispatchers.Main.immediate)
+
     private val layout = EnvLayout(File(context.filesDir, "terminal"))
     val env = EnvManager(layout, HttpEnvDownloader())
     val arch: EnvArch? = EnvArch.fromAbis(Build.SUPPORTED_ABIS.toList())
@@ -129,13 +135,14 @@ class TerminalHost(private val context: Context, private val scope: CoroutineSco
             val client = SessionClient(
                 onChange = { view?.onScreenUpdated() },
                 onTitle = { title -> if (title.isNotBlank()) tab.title = title },
-                onFinished = { tab.finished = true; view?.onScreenUpdated() },
+                onFinished = { tab.finished = true; view?.onScreenUpdated(); refreshService() },
             )
             val session = TerminalSession(spec.program, spec.cwd, spec.args, spec.env, TRANSCRIPT_ROWS, client)
             tab = TerminalTab(id, session)
             tabs.add(tab)
             selected = tabs.lastIndex
             error = null
+            startService()
         } catch (e: Exception) {
             error = "Could not start a shell: ${e::class.java.simpleName}: ${e.message}"
         }
@@ -146,12 +153,32 @@ class TerminalHost(private val context: Context, private val scope: CoroutineSco
         tab.session.finishIfRunning()
         tabs.removeAt(index)
         selected = selected.coerceIn(0, (tabs.size - 1).coerceAtLeast(0))
+        refreshService()
     }
 
     fun closeAll() {
         tabs.forEach { it.session.finishIfRunning() }
         tabs.clear()
         selected = 0
+        TerminalService.stop(context)
+    }
+
+    private fun running() = tabs.count { !it.finished }
+
+    /** Starts the service that keeps the process alive. Only from something the person did on screen. */
+    private fun startService() {
+        try {
+            TerminalService.start(context, running())
+        } catch (e: Exception) {
+            // The shell still works while the app is open; it just may not survive in the background.
+            error = "Could not keep the shell running in the background: ${e::class.java.simpleName}: ${e.message}"
+        }
+    }
+
+    /** After a shell ends: update the count, or stop the service when none is left. Never starts it (not allowed from the background). */
+    private fun refreshService() {
+        val n = running()
+        if (n > 0) TerminalService.update(context, n) else TerminalService.stop(context)
     }
 
     /** Sends an extra-keys press. Letters and symbols go as text; named keys go through the view so modes are respected. */
@@ -233,8 +260,14 @@ class TerminalHost(private val context: Context, private val scope: CoroutineSco
         override fun logStackTrace(tag: String, e: Exception) {}
     }
 
-    private companion object {
-        const val TRANSCRIPT_ROWS = 2000
+    companion object {
+        private const val TRANSCRIPT_ROWS = 2000
+
+        @Volatile private var instance: TerminalHost? = null
+
+        /** The one host for this process. */
+        fun get(context: Context): TerminalHost =
+            instance ?: synchronized(this) { instance ?: TerminalHost(context.applicationContext).also { instance = it } }
     }
 }
 

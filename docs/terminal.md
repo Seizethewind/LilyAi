@@ -10,7 +10,9 @@ Open the **Terminal** tab. The first time it shows a setup pane: **Download Linu
 
 **Safe mode** (`⋮` menu) turns off proot's seccomp speed-up. Use it if the shell hangs or prints errors at start; it is slower. Turning it on closes the open tabs.
 
-Not done yet: sessions end when the app process is stopped (Phase 3 keeps them alive in a foreground service); Lily's workers cannot run commands in it (Phase 4); the project folder is not mounted into the shell (Phase 4); there is no terminal colour or font setting.
+**Background (Phase 3):** while a shell is running, a notification ("Terminal: 1 shell is running", with a **Stop all** button) keeps the app's process alive, so a build or a server you started carries on when you leave the app, and the shells are still there when you come back. This uses a foreground service of type `specialUse` (`terminal/TerminalService.kt`); sessions live in one `TerminalHost` per process, not in the screen. Android can still end the app (low memory, Force stop), and the shells end with it. On Android 13 and later the notification needs the notification permission to be visible, but the service runs without it.
+
+Not done yet: Lily's workers cannot run commands in it (Phase 4); the project folder is not mounted into the shell (Phase 4); there is no terminal colour or font setting.
 
 ## How it works
 
@@ -34,6 +36,7 @@ The cost: proot is slower than native code. Heavy work (big builds) can feel it.
 | `src/debug/.../ProotSpikeActivity.kt` | Phase 0 test screen (debug builds only) | **no** |
 | `terminal/ui/TerminalHost.kt` | Environment state, open tabs, sticky Ctrl/Alt, the clients Termux's view and session need | compile-checked only |
 | `terminal/ui/TerminalScreen.kt` | The Terminal section: setup pane, tabs, terminal view, extra keys | compile-checked only |
+| `terminal/TerminalService.kt` | Foreground service that keeps the process alive while a shell runs; Stop all action | compile-checked only (its wording is unit tested) |
 | `utils/stage-proot.sh` | Copies a proot build from elsewhere into `jniLibs` under the right names (optional now) | syntax only |
 | `.github/workflows/build-proot.yml` | Builds proot and commits it to `jniLibs` | ran once, succeeded |
 
@@ -107,7 +110,7 @@ Deleting uses a walker that never follows links, because an unpacked root file s
 ## Next phases
 
 2. Terminal screen (terminal view libraries, PTY sessions, extra-keys row).
-3. Keep sessions alive in the foreground service.
+3. ~~Keep sessions alive in the foreground service.~~ Written (see above); not run on a device.
 4. Agent bridge: an in-app shell tool replacing the external Termux plugin's service call. The approval dialog stays.
 5. Run project checks and git locally.
 6. Remove the external Termux plugin's manifest entries and update the other docs.

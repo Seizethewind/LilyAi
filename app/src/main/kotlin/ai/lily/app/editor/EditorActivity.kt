@@ -132,7 +132,7 @@ class EditorActivity : ComponentActivity() {
         val nav = ShellNav()
         val aiNav = AiNav()
         val browser = BrowseState(this).also { browse = it }
-        val terminalHost = TerminalHost(applicationContext, lifecycleScope)
+        val terminalHost = TerminalHost.get(applicationContext)
         // How Lily's testers read the Browse page. It brings the Browse section on screen first, because a page that is not on screen has no size.
         val browseBridge = BrowseBridge(browser) { nav.section = Section.Browse }
         val settingsStore = EncryptedSettingsStore(applicationContext)
