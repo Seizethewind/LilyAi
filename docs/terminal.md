@@ -29,7 +29,7 @@ The cost: proot is slower than native code. Heavy work (big builds) can feel it.
 
 ## Phase 0: run the spike on a phone
 
-You need two things from outside the repository (a root file system archive, and a debug APK).
+Everything can be done from the phone alone; no PC or `adb` is needed.
 
 **1. proot binaries: already in the repository.** `.github/workflows/build-proot.yml` builds proot 0.15 (with talloc linked in) for `arm64-v8a`, `armeabi-v7a` and `x86_64`, and commits the result to `app/src/main/jniLibs/` together with `PROOT_SOURCE.md` (sources, versions and checksums of every file). It runs by hand (Actions, Build proot, Run workflow) or when that workflow file changes. It builds the scripts from [green-green-avk/build-proot-android](https://github.com/green-green-avk/build-proot-android), pinned to one commit, and the two source tarballs are pinned by SHA-256 (first recorded from the upstream download, so trusted on first use).
 
@@ -37,17 +37,11 @@ What is checked: the files exist, are Android executables for the right CPU, and
 
 **Licence:** proot is GPL-2.0-or-later and talloc is LGPL-3.0-or-later; the repository itself is MIT. Shipping those binaries in the APK carries obligations (at least offering the corresponding source; `PROOT_SOURCE.md` names it). Read them before you publish a release.
 
-**2. A root file system archive.** From alpinelinux.org, Downloads, "Mini root filesystem" for your CPU (`aarch64` for most phones). Take the SHA-256 from the `.sha256` file next to it and the size in bytes from the file.
+**2. The Linux root file system** is found by the app itself: it reads Alpine's `latest-releases.yaml` for your CPU, takes the "mini root file system" entry (file name, size, SHA-256) and downloads that. (`AlpineReleases.kt`. That parser was written without seeing the real file; if it cannot find the entry, the log shows the start of the file so it can be fixed.) The checksum comes from the same server as the file, so it catches a damaged download but not a hacked server; a manifest on your own GitHub releases would be stronger.
 
-**3. A debug build installed.** Push to the branch and let CI build, or run `gradle assembleDebug` yourself.
+**3. A debug build installed.** Download the `lilyai-debug-apk` artifact from the pull request's latest "Build" run (Actions tab, signed in to GitHub, works in a phone browser), unzip it and install the `.apk`. Android will ask you to allow installing from your browser or file manager.
 
-Then start the test screen and press the buttons in order:
-
-```
-adb shell am start -n ai.lily.app/.terminal.spike.ProotSpikeActivity \
-  --es url https://dl-cdn.alpinelinux.org/alpine/<version>/releases/aarch64/<file>.tar.gz \
-  --es sha256 <64 hex characters> --el size <bytes>
-```
+Then open the **Terminal spike** icon (a second icon, debug builds only) and press the buttons in order:
 
 | Button | Passes when |
 |---|---|
@@ -56,6 +50,8 @@ adb shell am start -n ai.lily.app/.terminal.spike.ProotSpikeActivity \
 | 3. Shell test | `PASS`, output shows `uname`, `id` as root and `SPIKE_OK` |
 | 3b. Shell test, seccomp off | Same, if 3 failed or hung (a few devices handle proot's speed-up badly) |
 | 4. Install git, python, node | `PASS`; needs network inside the guest |
+
+If you do have a PC, `adb shell am start -n ai.lily.app/.terminal.spike.ProotSpikeActivity --es url <https address> --es sha256 <64 hex> --el size <bytes>` overrides the automatic lookup.
 
 **Pass for Phase 0** is buttons 1, 2, 3 and 4 all passing on a real phone. If 3 fails, copy the whole log: the failure tells which of the three parts (the proot binary, its loader, the root file system) is wrong. Do not start Phase 2 before this passes.
 

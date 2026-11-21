@@ -1,5 +1,6 @@
 package ai.lily.app.terminal.spike
 
+import ai.lily.app.terminal.env.AlpineReleases
 import ai.lily.app.terminal.env.EnvArch
 import ai.lily.app.terminal.env.EnvException
 import ai.lily.app.terminal.env.EnvLayout
@@ -31,10 +32,9 @@ import kotlin.concurrent.thread
 /**
  * Phase 0 spike (debug builds only): proves that this device can run a Linux shell through proot from the app.
  *
- * Start it with adb, giving the root file system archive, its SHA-256 and its size in bytes:
- *   adb shell am start -n ai.lily.app/.terminal.spike.ProotSpikeActivity \
- *     --es url https://... --es sha256 <64 hex> --el size <bytes>
- * Then press the buttons in order. See docs/terminal.md for what a pass looks like.
+ * Open it from the "Terminal spike" icon in the launcher and press the buttons in order; no PC is needed, the root file
+ * system is found automatically. (adb can still override it with --es url, --es sha256 and --el size.)
+ * See docs/terminal.md for what a pass looks like.
  */
 class ProotSpikeActivity : Activity() {
     private val scope = CoroutineScope(SupervisorJob() + Dispatchers.IO)
@@ -108,16 +108,24 @@ class ProotSpikeActivity : Activity() {
     }
 
     private suspend fun install() {
+        val arch = EnvArch.fromAbis(Build.SUPPORTED_ABIS.toList())
+        if (arch == null) {
+            say("This phone's CPU (${Build.SUPPORTED_ABIS.joinToString()}) has no Linux environment build.")
+            return
+        }
+        // Optional overrides for people with adb: --es url, --es sha256, --el size. Otherwise ask Alpine what is current.
         val url = intent.getStringExtra("url")
         val sha = intent.getStringExtra("sha256")
         val size = intent.getLongExtra("size", -1L)
-        val arch = EnvArch.fromAbis(Build.SUPPORTED_ABIS.toList())
-        if (url == null || sha == null || size <= 0 || arch == null) {
-            say("Start this screen with --es url, --es sha256 and --el size (see the comment in ProotSpikeActivity). CPU supported: ${arch != null}")
-            return
+        val release = if (url != null && sha != null && size > 0) {
+            say("Using the address, checksum and size given at start.")
+            EnvReleaseParser.parse("""{"schema":1,"version":"spike","assets":{"${arch.distro}":{"url":"$url","sha256":"$sha","size":$size}}}""")
+        } else {
+            val yamlUrl = AlpineReleases.yamlUrl(arch)
+            say("Asking Alpine for the current mini root file system: $yamlUrl")
+            AlpineReleases.release(HttpEnvDownloader().fetchText(yamlUrl, maxBytes = 512 * 1024), arch)
+                .also { say("Found version ${it.version}, ${it.assets.getValue(arch.distro).sizeBytes / 1024} KB.") }
         }
-        val manifest = """{"schema":1,"version":"spike","assets":{"${arch.distro}":{"url":"$url","sha256":"$sha","size":$size}}}"""
-        val release = EnvReleaseParser.parse(manifest)
         val manager = EnvManager(layout, HttpEnvDownloader())
         val watcher = scope.launch {
             var lastBucket = -1L
