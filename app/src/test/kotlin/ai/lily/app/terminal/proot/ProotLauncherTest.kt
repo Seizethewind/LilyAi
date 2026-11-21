@@ -62,6 +62,17 @@ class ProotLauncherTest {
         }
     }
 
+    @Test fun sessionSpecKeepsArgvZeroAndFullEnvironment() {
+        val p = paths()
+        val spec = ProotLauncher.command(p, listOf("/bin/sh", "-l")).toSessionSpec()
+        assertEquals(p.proot.absolutePath, spec.program)
+        assertEquals(p.proot.absolutePath, spec.args.first())
+        assertEquals(listOf("/bin/sh", "-l"), spec.args.takeLast(2))
+        assertTrue("PROOT_LOADER=${p.loader.absolutePath}" in spec.env)
+        assertTrue(spec.env.all { it.contains('=') })
+        assertEquals(p.tmpDir.absolutePath, spec.cwd)
+    }
+
     @Test fun listsWhatIsMissing() {
         val p = paths()
         val all = ProotLauncher.problems(p)

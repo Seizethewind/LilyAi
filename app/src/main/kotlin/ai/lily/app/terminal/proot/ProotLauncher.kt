@@ -15,6 +15,16 @@ data class ProotPaths(
 data class ProotCommand(val argv: List<String>, val env: Map<String, String>, val workDir: File)
 
 /**
+ * What a terminal session needs to start the command: the program, its full argument list **including argv[0]** (Termux's
+ * native code passes the array to exec as it is, so the first entry must be the program's own name), the environment as
+ * `KEY=VALUE` strings (it replaces the whole environment, nothing is inherited), and the folder to start the host process in.
+ */
+class SessionSpec(val program: String, val args: Array<String>, val env: Array<String>, val cwd: String)
+
+fun ProotCommand.toSessionSpec() =
+    SessionSpec(argv.first(), argv.toTypedArray(), env.map { "${it.key}=${it.value}" }.toTypedArray(), workDir.absolutePath)
+
+/**
  * Builds the proot command line that starts a program inside the unpacked root file system.
  *
  * Why proot at all: since Android 10 an app may not run programs it unpacked into its own storage, but it may run the ones

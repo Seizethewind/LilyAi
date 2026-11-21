@@ -3,6 +3,8 @@ package ai.lily.app.editor
 import ai.lily.app.LilyFactory
 import ai.lily.app.SettingsScreen
 import ai.lily.app.core.Lily
+import ai.lily.app.terminal.ui.TerminalHost
+import ai.lily.app.terminal.ui.TerminalScreen
 import ai.lily.app.core.TaskResult
 import ai.lily.app.lib.editor.DraftStore
 import ai.lily.app.plugins.PluginServices
@@ -130,6 +132,7 @@ class EditorActivity : ComponentActivity() {
         val nav = ShellNav()
         val aiNav = AiNav()
         val browser = BrowseState(this).also { browse = it }
+        val terminalHost = TerminalHost(applicationContext, lifecycleScope)
         // How Lily's testers read the Browse page. It brings the Browse section on screen first, because a page that is not on screen has no size.
         val browseBridge = BrowseBridge(browser) { nav.section = Section.Browse }
         val settingsStore = EncryptedSettingsStore(applicationContext)
@@ -257,6 +260,7 @@ class EditorActivity : ComponentActivity() {
                                 nav.section = Section.Work
                             })
                             Section.Browse -> BrowseScreen(browser)
+                            Section.Terminal -> TerminalScreen(terminalHost)
                             Section.Plugins -> PluginsScreen(plugins)
                             Section.Ai -> AiHost(ai, aiNav)
                             // The AI section keeps its own copy of the settings, so it reads them again, or its next change would undo this save.
