@@ -11,8 +11,12 @@ def main() -> None:
             text = input("you> ").strip()
             if text in {"/quit", "/exit"}:
                 break
-            if text:
+            if not text:
+                continue
+            try:
                 print(f"lily> {runtime.handle(text)}")
+            except (NotImplementedError, ValueError) as err:
+                print(f"lily> [{type(err).__name__}] {err}")
     except (KeyboardInterrupt, EOFError):
         pass
     finally:

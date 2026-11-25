@@ -10,5 +10,4 @@ class Decision:
 
 class DecisionMaker:
     def decide(self, plan: list[str]) -> Decision:
-        # TODO: wire in the model and tool calls
-        return Decision(action="respond", content="(model not implemented yet)")
+        raise NotImplementedError("Decision making needs the model and tool layer.")

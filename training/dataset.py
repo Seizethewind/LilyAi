@@ -1,4 +1,5 @@
 """Text dataset."""
+from typing import Any
 
 
 class TextDataset:
@@ -8,5 +9,5 @@ class TextDataset:
     def __len__(self) -> int:
         raise NotImplementedError
 
-    def __getitem__(self, idx: int):
+    def __getitem__(self, idx: int) -> Any:
         raise NotImplementedError
