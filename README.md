@@ -21,6 +21,20 @@ Early scaffold. The runtime, configuration, conversation, memory, tool registry 
 
 Every file has one responsibility and stays under 200 lines.
 
+## Install
+
+Requires Python 3.10 or newer. The model and training code use PyTorch; the rest is standard library only.
+
+```
+pip install -e ".[dev]"
+```
+
+On a GPU machine, first install the PyTorch build that matches its CUDA version (see pytorch.org), then run the command above.
+
 ## Run
 
 `python main.py` starts the terminal chat loop. It reports the first unimplemented step until the model exists.
+
+## Test
+
+`pytest`. Each test is added together with the code it checks.
