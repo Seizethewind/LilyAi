@@ -1,7 +1,8 @@
 """Optimizer and learning-rate schedule."""
+from typing import Any
 
 
-def build_optimizer(model, learning_rate: float):
+def build_optimizer(model: Any, learning_rate: float) -> Any:
     raise NotImplementedError
 
 

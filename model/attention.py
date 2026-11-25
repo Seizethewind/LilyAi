@@ -1,4 +1,5 @@
 """Multi-head self-attention."""
+from typing import Any
 
 
 class MultiHeadAttention:
@@ -7,5 +8,5 @@ class MultiHeadAttention:
         self.n_heads = n_heads
         self.dropout = dropout
 
-    def __call__(self, x, mask=None):
+    def __call__(self, x: Any, mask: Any = None) -> Any:
         raise NotImplementedError

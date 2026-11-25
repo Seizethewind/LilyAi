@@ -3,5 +3,4 @@
 
 class Planning:
     def plan(self, goal: str) -> list[str]:
-        # TODO: real planner
-        return [goal]
+        raise NotImplementedError("Planning is not implemented yet.")

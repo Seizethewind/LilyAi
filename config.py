@@ -29,6 +29,7 @@ class MemoryConfig:
 @dataclass
 class SafetyConfig:
     max_input_chars: int = 8000
+    max_output_chars: int = 8000
     allowed_tools: list[str] = field(default_factory=list)
 
 

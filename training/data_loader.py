@@ -1,4 +1,6 @@
 """Batching over a dataset."""
+from typing import Any, Iterator
+
 from training.dataset import TextDataset
 
 
@@ -8,5 +10,5 @@ class DataLoader:
         self.batch_size = batch_size
         self.shuffle = shuffle
 
-    def __iter__(self):
+    def __iter__(self) -> Iterator[Any]:
         raise NotImplementedError

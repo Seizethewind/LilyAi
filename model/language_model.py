@@ -1,4 +1,6 @@
 """Decoder-only language model: embeddings + blocks + output head."""
+from typing import Any, Sequence
+
 from model.architecture import Architecture
 from model.embeddings import Embeddings
 from model.transformer_block import TransformerBlock
@@ -13,5 +15,5 @@ class LanguageModel:
             for _ in range(arch.n_layers)
         ]
 
-    def forward(self, token_ids):
+    def forward(self, token_ids: Sequence[int]) -> Any:
         raise NotImplementedError
